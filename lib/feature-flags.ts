@@ -1,19 +1,20 @@
 // Compile-time feature flags for the Cloudflare Workers fork.
 //
-// LOCAL_PANELS gates the "local machine" feature panels inherited from
-// upstream pi-web: the Models/Skills/Plugins config dialogs and the
-// FileExplorer / FileViewer file panel. Their backing routes
-// (/api/config/*, /api/skills*, /api/plugins*, /api/files*, /api/file-index,
-// /api/auth/login/:provider) do not exist on the agent Worker, and two of the
-// panels open EventSources that would retry forever against it
-// (ModelsConfig's OAuth-login SSE, FileViewer's file-watch SSE).
+// LOCAL_PANELS gates the "local machine" config panels inherited from
+// upstream pi-web: the Models/Skills/Plugins dialogs. Their backing routes
+// (/api/config/*, /api/skills*, /api/plugins*, /api/auth/login/:provider) do
+// not exist on the agent Worker, and ModelsConfig opens an OAuth-login
+// EventSource that would retry forever against it. These stay OFF (the
+// "不做" list) — the components are kept in the tree so they type-check.
 //
-// The components themselves are intentionally kept in the tree (only their
-// entry points are gated) so they keep type-checking and can be revived:
-// task D3 flips this flag (or splits it per-panel) to bring back
-// FileExplorer/FileViewer backed by the session sandbox filesystem.
-// Models/Skills/Plugins stay hidden even then.
+// FILE_PANELS (D3) revives the FILE side of what D0 hid — FileExplorer /
+// FileViewer / the @ file-index / the cwd picker — now backed by the
+// per-user E2B sandbox through the agent Worker's sandbox file routes
+// (/api/files/*, /api/file-index, /api/dirs, /api/files ?type=watch SSE,
+// /api/workspace/init). All calls go through apiFetch/apiUrl (D2a
+// credentials + login-gate semantics).
 //
-// The explicit `: boolean` annotation stops TypeScript from narrowing the
-// gated JSX into `never`-land, so the hidden branches stay fully checked.
+// The explicit `: boolean` annotations stop TypeScript from narrowing the
+// gated JSX into `never`-land, so hidden branches stay fully checked.
 export const LOCAL_PANELS: boolean = false;
+export const FILE_PANELS: boolean = true;
