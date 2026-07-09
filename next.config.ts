@@ -1,3 +1,5 @@
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+void initOpenNextCloudflareForDev();
 import type { NextConfig } from "next";
 import { readFileSync } from "fs";
 import { dirname, join } from "path";

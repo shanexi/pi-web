@@ -44,3 +44,8 @@ yarn-error.log*
 next-env.d.ts
 .factory
 e2e_*.mjs
+
+# Cloudflare/OpenNext build outputs and local secrets
+.open-next/
+.wrangler/
+.dev.vars*
