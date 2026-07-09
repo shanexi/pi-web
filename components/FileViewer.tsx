@@ -13,7 +13,7 @@ import {
   isDocumentPreviewPath,
   isImagePath,
 } from "@/lib/file-types";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch, apiUrl } from "@/lib/api-base";
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { resolveLocalFileHref } from "@/lib/file-links";
 import { markdownPreviewRehypePlugins, markdownPreviewRemarkPlugins } from "@/lib/markdown";
@@ -31,7 +31,7 @@ interface FileData {
   size: number;
 }
 
-function getFileApiUrl(
+function getFileApiPath(
   filePath: string,
   type: "read" | "download" | "meta" | "preview" | "watch",
   sourceSessionId?: string | null,
@@ -43,7 +43,18 @@ function getFileApiUrl(
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined) searchParams.set(key, String(value));
   }
-  return apiUrl(`/api/files/${encoded}?${searchParams.toString()}`);
+  return `/api/files/${encoded}?${searchParams.toString()}`;
+}
+
+// Absolute URL for src=/href=/EventSource use; JSON fetches go through
+// apiFetch(getFileApiPath(...)) instead so credentials ride along (D2a).
+function getFileApiUrl(
+  filePath: string,
+  type: "read" | "download" | "meta" | "preview" | "watch",
+  sourceSessionId?: string | null,
+  params: Record<string, string | number | undefined> = {},
+): string {
+  return apiUrl(getFileApiPath(filePath, type, sourceSessionId, params));
 }
 
 function DownloadLink({ filePath, sourceSessionId }: { filePath: string; sourceSessionId?: string | null }) {
@@ -333,7 +344,7 @@ function ImageViewer({ filePath, cwd, sourceSessionId }: Props) {
       esRef.current = null;
     }
 
-    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId));
+    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId), { withCredentials: true });
     esRef.current = es;
 
     es.addEventListener("connected", () => setWatching(true));
@@ -466,7 +477,7 @@ function AudioViewer({ filePath, cwd, sourceSessionId }: Props) {
       esRef.current = null;
     }
 
-    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId));
+    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId), { withCredentials: true });
     esRef.current = es;
 
     es.addEventListener("connected", () => setWatching(true));
@@ -584,7 +595,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
       esRef.current = null;
     }
 
-    fetch(getFileApiUrl(filePath, "meta", sourceSessionId))
+    apiFetch(getFileApiPath(filePath, "meta", sourceSessionId))
       .then((r) => r.json())
       .then((d: { size?: number; error?: string }) => {
         if (d.error) setError(d.error);
@@ -597,7 +608,7 @@ function DocumentViewer({ filePath, cwd, sourceSessionId }: Props) {
       })
       .catch((e) => setError(String(e)));
 
-    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId));
+    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId), { withCredentials: true });
     esRef.current = es;
 
     es.addEventListener("connected", () => setWatching(true));
@@ -708,7 +719,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile }: Props) {
   const esRef = useRef<EventSource | null>(null);
 
   const fetchContent = useCallback((filePath: string, isRefresh = false) => {
-    return fetch(getFileApiUrl(filePath, "read", sourceSessionId))
+    return apiFetch(getFileApiPath(filePath, "read", sourceSessionId))
       .then((r) => r.json())
       .then((d: FileData & { error?: string }) => {
         if (d.error) {
@@ -754,7 +765,7 @@ function TextFileViewer({ filePath, cwd, sourceSessionId, onOpenFile }: Props) {
     }).finally(() => setLoading(false));
 
     // Set up SSE watch
-    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId));
+    const es = new EventSource(getFileApiUrl(filePath, "watch", sourceSessionId), { withCredentials: true });
     esRef.current = es;
 
     es.addEventListener("connected", () => {

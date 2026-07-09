@@ -63,7 +63,18 @@ interface PendingConflict {
   nonReplaceable: string[];
 }
 
-async function fetchEntries(dirPath: string): Promise<FileNode[]> {
+/**
+ * D3: the backend answers `{sandbox: null}` when the caller's workspace has
+ * no sandbox yet (browsing never creates a VM) — surfaced here so the root
+ * explorer can render the 「工作区未初始化」 empty state with an explicit
+ * init button instead of a bare "No files found".
+ */
+interface FetchEntriesResult {
+  entries: FileNode[];
+  uninitialized: boolean;
+}
+
+async function fetchEntries(dirPath: string): Promise<FetchEntriesResult> {
   const encoded = encodeFilePathForApi(dirPath);
   const res = await apiFetch(`/api/files/${encoded}?type=list`);
   if (!res.ok) {
@@ -76,15 +87,18 @@ async function fetchEntries(dirPath: string): Promise<FileNode[]> {
     }
     throw new Error(message);
   }
-  const data = await res.json() as { entries?: FileEntry[] };
-  return (data.entries ?? []).map((e) => ({
-    name: e.name,
-    fullPath: joinFilePath(dirPath, e.name),
-    isDir: e.isDir,
-    size: e.size,
-    children: e.isDir ? [] : undefined,
-    loaded: !e.isDir,
-  }));
+  const data = await res.json() as { entries?: FileEntry[]; sandbox?: string | null };
+  return {
+    uninitialized: data.sandbox === null,
+    entries: (data.entries ?? []).map((e) => ({
+      name: e.name,
+      fullPath: joinFilePath(dirPath, e.name),
+      isDir: e.isDir,
+      size: e.size,
+      children: e.isDir ? [] : undefined,
+      loaded: !e.isDir,
+    })),
+  };
 }
 
 function uploadFiles(
@@ -98,10 +112,14 @@ function uploadFiles(
     files.forEach((file) => formData.append("files", file, file.name));
 
     const xhr = new XMLHttpRequest();
+    // D3 ("全经 apiFetch"): the upload route lives on the pi-cf Worker, so the
+    // URL needs the Worker base. XHR bypasses apiFetch, so credentials must be
+    // opted into explicitly or the pi_session cookie never rides along (→401).
     xhr.open(
       "POST",
-      `/api/files/${encodeFilePathForApi(targetDirectory)}?type=upload&conflict=${strategy}`,
+      apiUrl(`/api/files/${encodeFilePathForApi(targetDirectory)}?type=upload&conflict=${strategy}`),
     );
+    xhr.withCredentials = true;
     xhr.upload.onprogress = (event) => {
       if (event.lengthComputable && event.total > 0) {
         onProgress(Math.round((event.loaded / event.total) * 100));
@@ -182,7 +200,7 @@ function TreeNode({
     if (loaded && !force) return;
     setLoading(true);
     try {
-      const entries = await fetchEntries(node.fullPath);
+      const { entries } = await fetchEntries(node.fullPath);
       setChildren(entries);
       setLoaded(true);
     } catch {
@@ -374,6 +392,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   const [roots, setRoots] = useState<FileNode[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [uninitialized, setUninitialized] = useState(false);
+  const [initializing, setInitializing] = useState(false);
   const [expandedPaths, setExpandedPaths] = useState<Set<string>>(new Set());
   const [treeRefreshKey, setTreeRefreshKey] = useState(0);
   const [highlightedPaths, setHighlightedPaths] = useState<Set<string>>(new Set());
@@ -448,7 +468,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setUploadPhase("checking");
 
     try {
-      const res = await fetch(
+      // D3 ("全经 apiFetch"): Worker base URL + pi_session credentials.
+      const res = await apiFetch(
         `/api/files/${encodeFilePathForApi(cwd)}?type=upload-check`,
         {
           method: "POST",
@@ -511,11 +532,38 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setError(null);
     let cancelled = false;
     fetchEntries(cwd)
-      .then((entries) => { if (!cancelled) setRoots(entries); })
+      .then((result) => {
+        if (cancelled) return;
+        // D3: {sandbox:null} → render the explicit init empty state.
+        setUninitialized(result.uninitialized);
+        setRoots(result.entries);
+      })
       .catch((e) => { if (!cancelled) setError(e instanceof Error ? e.message : String(e)); })
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
   }, [cwd, refreshKey, treeRefreshKey]);
+
+  // D3: explicit workspace creation — the ONLY path that spins up a VM from
+  // the file panel (browsing itself never does). Reuses treeRefreshKey (the
+  // upload refresh signal) to re-run the root effect once the VM exists.
+  const handleInitWorkspace = useCallback(async () => {
+    if (initializing) return;
+    setInitializing(true);
+    setError(null);
+    try {
+      const res = await apiFetch("/api/workspace/init", { method: "POST" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setError(data.error ?? `HTTP ${res.status}`);
+        return;
+      }
+      setTreeRefreshKey((key) => key + 1);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setInitializing(false);
+    }
+  }, [initializing]);
 
   const showUploadFeedback = uploadBusy || pendingConflict !== null || uploadError !== null || uploadSummary !== null;
 
@@ -525,6 +573,38 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
       uploadSummary.uploaded.map((name) => getRelativeFilePath(joinFilePath(cwd, name), cwd)),
     );
   }, [cwd, onAtMentions, uploadSummary]);
+
+  // D3: no sandbox yet — offer explicit creation instead of a bare empty tree.
+  // Ahead of the main return: with no workspace there is nothing to upload into.
+  if (uninitialized) {
+    return (
+      <div style={{ padding: "14px 12px", textAlign: "center" }}>
+        <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 8 }}>
+          工作区未初始化
+        </div>
+        {error && (
+          <div style={{ fontSize: 10, color: "var(--error)", marginBottom: 8 }}>{error}</div>
+        )}
+        <button
+          onClick={() => void handleInitWorkspace()}
+          disabled={initializing}
+          style={{
+            padding: "5px 14px",
+            background: "var(--accent)",
+            border: "none",
+            borderRadius: 5,
+            color: "#fff",
+            fontSize: 11,
+            fontWeight: 600,
+            cursor: initializing ? "not-allowed" : "pointer",
+            opacity: initializing ? 0.65 : 1,
+          }}
+        >
+          {initializing ? "初始化中…" : "初始化工作区"}
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div style={{ minHeight: "100%" }}>

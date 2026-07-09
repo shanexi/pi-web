@@ -14,7 +14,7 @@ import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
-import { LOCAL_PANELS } from "@/lib/feature-flags";
+import { FILE_PANELS, LOCAL_PANELS } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import { apiFetch, apiUrl, loginUrl } from "@/lib/api-base";
@@ -316,9 +316,10 @@ export function AppShell() {
   }, [selectedSession, router]);
 
   const handleOpenFile = useCallback((filePath: string, fileName: string, sourceSessionId?: string | null) => {
-    // File panel is compile-time hidden (D0); never open tabs so the right
+    // File panel is compile-time gated (D0 hid it; D3's FILE_PANELS revives
+    // it sandbox-backed) — with the flag off, never open tabs so the right
     // panel (and FileViewer's file-watch EventSources) stays unmounted.
-    if (!LOCAL_PANELS) return;
+    if (!FILE_PANELS) return;
     const tabId = `file:${filePath}`;
     setFileTabs((prev) => {
       const existing = prev.find((t) => t.id === tabId);
@@ -787,8 +788,8 @@ export function AppShell() {
                   display: "flex", alignItems: "center", gap: 10,
                   paddingLeft: 12,
                   // 48px only reserves room for the fixed file-panel toggle,
-                  // which is hidden when LOCAL_PANELS is off.
-                  paddingRight: LOCAL_PANELS && !rightPanelOpen ? 48 : 12,
+                  // which is hidden when FILE_PANELS is off.
+                  paddingRight: FILE_PANELS && !rightPanelOpen ? 48 : 12,
                   height: "100%",
                   background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
                   border: "none",
@@ -1093,10 +1094,9 @@ export function AppShell() {
         </div>
       </div>
 
-      {/* Right panel: file viewer — width animated via CSS; entry points are
-          compile-time gated (LOCAL_PANELS, D0) until D3 revives the file
-          panel with sandbox-backed file routes. */}
-      {LOCAL_PANELS && (
+      {/* Right panel: file viewer — width animated via CSS; D3 revived it
+          (FILE_PANELS) backed by the per-user sandbox file routes. */}
+      {FILE_PANELS && (
       <div
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}`}
         style={{
@@ -1142,7 +1142,7 @@ export function AppShell() {
       )}
     </div>
     {/* File panel toggle — top-right, hidden together with the file panel */}
-    {LOCAL_PANELS && (
+    {FILE_PANELS && (
     <button
       onClick={() => setRightPanelOpen((v) => !v)}
       title={rightPanelOpen ? "Hide file panel" : "Show file panel"}

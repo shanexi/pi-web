@@ -3,16 +3,9 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { apiFetch, CF_CWD } from "@/lib/api-base";
-import { LOCAL_PANELS } from "@/lib/feature-flags";
+import { FILE_PANELS } from "@/lib/feature-flags";
+import { SandboxDirPicker } from "./SandboxDirPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
-
-declare global {
-  interface Window {
-    piDesktop?: {
-      selectDirectory: () => Promise<string | null>;
-    };
-  }
-}
 
 interface Props {
   selectedSessionId: string | null;
@@ -330,14 +323,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // NEXT_PUBLIC_CF_CWD (default "/workspace") so "New session" works
   // immediately without the local cwd-picker flow.
   const [selectedCwd, setSelectedCwd] = useState<string | null>(CF_CWD);
-  const [homeDir, setHomeDir] = useState<string>("");
+  // D3: fixed "" — /api/home is retired (no host-machine "~" on sandbox paths).
+  const homeDir = "";
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
-  const [customPathOpen, setCustomPathOpen] = useState(false);
-  const [customPathValue, setCustomPathValue] = useState("");
-  const [customPathError, setCustomPathError] = useState<string | null>(null);
-  const [customPathValidating, setCustomPathValidating] = useState(false);
-  const customPathInputRef = useRef<HTMLInputElement>(null);
+  // D3: "custom path" lost its host-machine meaning on Workers — the picker
+  // now browses the per-user SANDBOX directory tree (/api/dirs) instead.
+  const [sandboxBrowseOpen, setSandboxBrowseOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
   // Worktree switcher state
   const [worktreeState, setWorktreeState] = useState<WorktreeState | null>(null);
@@ -473,11 +465,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     if (explorerRefreshKey !== undefined) setExplorerKey((k) => k + 1);
   }, [explorerRefreshKey]);
 
-  useEffect(() => {
-    apiFetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
-      if (d.home) setHomeDir(d.home);
-    }).catch(() => {});
-  }, []);
+  // D3: /api/home (host-machine "~" abbreviation) is retired along with the
+  // other local-cwd routes — sandbox paths have no home prefix to strip, so
+  // homeDir stays "" and displayCwd() passes paths through unchanged.
 
   const restoredRef = useRef(false);
 
@@ -571,72 +561,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
   }, [allSessions, selectedCwd, initialSessionId, onSelectSession, onInitialRestoreDone]);
 
-  const commitCustomPath = useCallback(async (candidate?: string) => {
-    const path = (candidate ?? customPathValue).trim();
-    if (!path || customPathValidating) return;
+  // D3: the sandbox dir picker hands us an absolute sandbox path; it becomes
+  // the cwd that ensureNewSession posts to /api/agent/new.
+  const handlePickSandboxDir = useCallback((path: string) => {
+    setSelectedCwd(path);
+    setSandboxBrowseOpen(false);
+    setDropdownOpen(false);
+  }, []);
 
-    setCustomPathValidating(true);
-    setCustomPathError(null);
-    try {
-      const res = await apiFetch("/api/cwd/validate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cwd: path }),
-      });
-      const data = await res.json().catch(() => ({})) as { cwd?: string; error?: string };
-      if (!res.ok || data.error) {
-        setCustomPathError(data.error ?? `HTTP ${res.status}`);
-        return;
-      }
-      setSelectedCwd(data.cwd ?? path);
-      setCustomPathOpen(false);
-      setCustomPathValue("");
-      setDropdownOpen(false);
-    } catch (e) {
-      setCustomPathError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setCustomPathValidating(false);
-    }
-  }, [customPathValue, customPathValidating]);
-
-  const handleCustomPathClick = useCallback(async () => {
-    const desktop = window.piDesktop;
-    if (!desktop) {
-      setCustomPathOpen(true);
-      setCustomPathError(null);
-      setTimeout(() => customPathInputRef.current?.focus(), 0);
-      return;
-    }
-
-    try {
-      setCustomPathError(null);
-      const path = await desktop.selectDirectory();
-      if (path === null) return;
-
-      setCustomPathValue(path);
-      setCustomPathOpen(true);
-      await commitCustomPath(path);
-    } catch (e) {
-      setCustomPathOpen(true);
-      setCustomPathError(e instanceof Error ? e.message : String(e));
-      setTimeout(() => customPathInputRef.current?.focus(), 0);
-    }
-  }, [commitCustomPath]);
-
-  const handleDefaultCwd = useCallback(async () => {
-    try {
-      const res = await apiFetch("/api/default-cwd", { method: "POST" });
-      const data = await res.json() as { cwd?: string; error?: string };
-      if (data.cwd) {
-        setSelectedCwd(data.cwd);
-        setCustomPathOpen(false);
-        setCustomPathValue("");
-        setCustomPathError(null);
-        setDropdownOpen(false);
-      }
-    } catch {
-      // ignore
-    }
+  // "Default directory" is the synthetic sandbox workspace root (CF_CWD,
+  // default /workspace) — a local selection, no server round-trip.
+  const handleDefaultCwd = useCallback(() => {
+    setSelectedCwd(CF_CWD);
+    setSandboxBrowseOpen(false);
+    setDropdownOpen(false);
   }, []);
 
   const handleCreateWorktree = useCallback(async () => {
@@ -711,9 +649,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setDropdownOpen(false);
         setProjectFilter("");
-        setCustomPathOpen(false);
-        setCustomPathValue("");
-        setCustomPathError(null);
+        setSandboxBrowseOpen(false);
       }
       if (wtDropdownRef.current && !wtDropdownRef.current.contains(e.target as Node)) {
         setWtDropdownOpen(false);
@@ -979,9 +915,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     onClick={() => {
                       setSelectedCwd(project);
                       setProjectFilter("");
-                      setCustomPathOpen(false);
-                      setCustomPathValue("");
-                      setCustomPathError(null);
+                      setSandboxBrowseOpen(false);
                       setDropdownOpen(false);
                     }}
                     style={{
@@ -1018,8 +952,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                 )}
               </div>
 
-              {/* Default cwd shortcut */}
-              {!customPathOpen && (
+              {/* Default cwd shortcut — the sandbox workspace root */}
+              {!sandboxBrowseOpen && (
                 <button
                   onClick={(e) => { e.stopPropagation(); handleDefaultCwd(); }}
                   style={{
@@ -1040,16 +974,20 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                   <svg width="10" height="10" viewBox="0 0 10 10" fill="none" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                     <path d="M1 3A1 1 0 0 1 2 2H4L5 3.5H8.5a.5.5 0 0 1 .5.5v4a.5.5 0 0 1-.5.5h-7A.5.5 0 0 1 1 8V3Z" />
                   </svg>
-                  <span>Use default directory</span>
+                  <span>Use default directory ({CF_CWD})</span>
                 </button>
               )}
 
-              {/* Custom path entry */}
-              {!customPathOpen ? (
+              {/* D3: sandbox directory browser — replaces the host-machine
+                  "Custom path…" flow. Lists /api/dirs, creates folders via
+                  POST /api/dirs, and shows the 「初始化工作区」 empty state
+                  when no sandbox exists yet. Mounted only while open so the
+                  dropdown doesn't fetch in the background. */}
+              {!sandboxBrowseOpen ? (
                 <button
                   onClick={(e) => {
                     e.stopPropagation();
-                    void handleCustomPathClick();
+                    setSandboxBrowseOpen(true);
                   }}
                   style={{
                     display: "flex",
@@ -1069,89 +1007,13 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
                     <line x1="5" y1="1" x2="5" y2="9" />
                     <line x1="1" y1="5" x2="9" y2="5" />
                   </svg>
-                  <span>Custom path…</span>
+                  <span>Browse sandbox…</span>
                 </button>
               ) : (
-                <div style={{ padding: "6px 8px", borderTop: visibleProjects.length > 0 ? "none" : undefined }}>
-                  <input
-                    ref={customPathInputRef}
-                    value={customPathValue}
-                    onChange={(e) => {
-                      setCustomPathValue(e.target.value);
-                      setCustomPathError(null);
-                    }}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void commitCustomPath();
-                      }
-                      if (e.key === "Escape") {
-                        setCustomPathOpen(false);
-                        setCustomPathValue("");
-                        setCustomPathError(null);
-                      }
-                    }}
-                    placeholder="/path/to/project"
-                    style={{
-                      width: "100%",
-                      fontSize: 11,
-                      fontFamily: "var(--font-mono)",
-                      padding: "5px 8px",
-                      border: "1px solid var(--accent)",
-                      borderRadius: 5,
-                      outline: "none",
-                      background: "var(--bg)",
-                      color: "var(--text)",
-                      boxSizing: "border-box",
-                    }}
-                  />
-                  {customPathError && (
-                    <div style={{
-                      marginTop: 5,
-                      color: "#dc2626",
-                      fontSize: 11,
-                      lineHeight: 1.35,
-                      overflowWrap: "anywhere",
-                    }}>
-                      {customPathError}
-                    </div>
-                  )}
-                  <div style={{ display: "flex", gap: 5, marginTop: 5 }}>
-                    <button
-                      onClick={() => void commitCustomPath()}
-                      disabled={customPathValidating || !customPathValue.trim()}
-                      style={{
-                        flex: 1,
-                        padding: "4px 0",
-                        background: "var(--accent)",
-                        border: "none",
-                        borderRadius: 5,
-                        color: "#fff",
-                        fontSize: 11,
-                        fontWeight: 600,
-                        cursor: customPathValidating || !customPathValue.trim() ? "not-allowed" : "pointer",
-                        opacity: customPathValidating || !customPathValue.trim() ? 0.65 : 1,
-                      }}
-                    >
-                      {customPathValidating ? "Checking…" : "Open"}
-                    </button>
-                    <button
-                      onClick={() => { setCustomPathOpen(false); setCustomPathValue(""); setCustomPathError(null); }}
-                      style={{
-                        flex: 1,
-                        padding: "4px 0",
-                        background: "var(--bg-hover)",
-                        border: "1px solid var(--border)",
-                        borderRadius: 5,
-                        color: "var(--text-muted)",
-                        fontSize: 11,
-                        cursor: "pointer",
-                      }}
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                </div>
+                <SandboxDirPicker
+                  initialPath={selectedCwd ?? CF_CWD}
+                  onSelect={handlePickSandboxDir}
+                />
               )}
           </AnimatedDropdown>
         </div>
@@ -1475,7 +1337,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       </div>
 
       {/* Session list */}
-      <div style={{ flex: LOCAL_PANELS && explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
+      <div style={{ flex: FILE_PANELS && explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
         {loading && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             Loading...
@@ -1509,10 +1371,9 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         ))}
       </div>
 
-      {/* File Explorer section — compile-time gated (LOCAL_PANELS, D0):
-          FileExplorer's mount fetch (/api/files/:path?type=list) has no
-          backing route on the agent Worker. D3 revives it sandbox-backed. */}
-      {LOCAL_PANELS && (selectedCwdProp || selectedCwd) && (
+      {/* File Explorer section — D3 revived (FILE_PANELS): the tree is the
+          per-user sandbox filesystem via /api/files/:path?type=list. */}
+      {FILE_PANELS && (selectedCwdProp || selectedCwd) && (
         <div
           style={{
             borderTop: "1px solid var(--border)",
