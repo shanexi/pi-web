@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { apiUrl, CF_CWD } from "@/lib/api-base";
+import { apiFetch, CF_CWD } from "@/lib/api-base";
 import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 
@@ -368,7 +368,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const loadSessions = useCallback(async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const res = await fetch(apiUrl("/api/sessions"));
+      const res = await apiFetch("/api/sessions");
       if (!res.ok) {
         // The backend Worker may not implement the sessions list yet
         // (404/501). Degrade silently to an empty list instead of surfacing
@@ -474,7 +474,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [explorerRefreshKey]);
 
   useEffect(() => {
-    fetch(apiUrl("/api/home")).then((r) => r.json()).then((d: { home?: string }) => {
+    apiFetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
       if (d.home) setHomeDir(d.home);
     }).catch(() => {});
   }, []);
@@ -523,7 +523,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
     let cancelled = false;
     setWorktreeLoadingCwd(selectedCwd);
-    fetch(apiUrl(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`))
+    apiFetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
       .then((r) => r.json())
       .then((d: { projectRoot?: string; isGit?: boolean; isTopLevel?: boolean; worktrees?: WorktreeEntry[]; error?: string }) => {
         if (cancelled) return;
@@ -578,7 +578,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setCustomPathValidating(true);
     setCustomPathError(null);
     try {
-      const res = await fetch(apiUrl("/api/cwd/validate"), {
+      const res = await apiFetch("/api/cwd/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: path }),
@@ -625,7 +625,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   const handleDefaultCwd = useCallback(async () => {
     try {
-      const res = await fetch(apiUrl("/api/default-cwd"), { method: "POST" });
+      const res = await apiFetch("/api/default-cwd", { method: "POST" });
       const data = await res.json() as { cwd?: string; error?: string };
       if (data.cwd) {
         setSelectedCwd(data.cwd);
@@ -645,7 +645,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setWtBusy(true);
     setWtError(null);
     try {
-      const res = await fetch(apiUrl("/api/worktrees"), {
+      const res = await apiFetch("/api/worktrees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: worktreeState.projectRoot, branch }),
@@ -680,7 +680,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setWtBusy(true);
     setWtError(null);
     try {
-      const res = await fetch(apiUrl("/api/worktrees"), {
+      const res = await apiFetch("/api/worktrees", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: worktreeState.projectRoot, path, force }),
@@ -1813,7 +1813,7 @@ function SessionItem({
     setRenaming(false);
     if (name === (session.name ?? "")) return;
     try {
-      await fetch(apiUrl(`/api/sessions/${encodeURIComponent(session.id)}`), {
+      await apiFetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -1834,7 +1834,7 @@ function SessionItem({
     setConfirmDelete(false);
     setDeleting(true);
     try {
-      await fetch(apiUrl(`/api/sessions/${encodeURIComponent(session.id)}`), { method: "DELETE" });
+      await apiFetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
       onDeleted?.(session.id);
     } catch {
       setDeleting(false);

@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { sendAgentCommand } from "@/lib/agent-client";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch } from "@/lib/api-base";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import type { PluginPackageInfo, PluginsResponse } from "@/lib/api-types";
 
@@ -591,7 +591,7 @@ export function PluginsConfig({
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(apiUrl(`/api/plugins?cwd=${encodeURIComponent(cwd)}`));
+      const res = await apiFetch(`/api/plugins?cwd=${encodeURIComponent(cwd)}`);
       const next = (await res.json()) as PluginsResponse & { error?: string };
       if (!res.ok || next.error) throw new Error(next.error ?? `HTTP ${res.status}`);
       setData(next);
@@ -617,7 +617,7 @@ export function PluginsConfig({
     setActionError(null);
     setActionMessage(null);
     try {
-      const res = await fetch(apiUrl("/api/plugins"), {
+      const res = await apiFetch("/api/plugins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, source: pkg.source, scope: pkg.scope, cwd }),
@@ -653,7 +653,7 @@ export function PluginsConfig({
     setActionError(null);
     setActionMessage(null);
     try {
-      const res = await fetch(apiUrl("/api/plugins"), {
+      const res = await apiFetch("/api/plugins", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action: "install", source, scope: installScope, cwd }),

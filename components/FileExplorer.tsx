@@ -2,7 +2,7 @@
 
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useRef } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch, apiUrl } from "@/lib/api-base";
 import { encodeFilePathForApi, getRelativeFilePath, joinFilePath } from "@/lib/file-paths";
 
 interface FileEntry {
@@ -65,7 +65,7 @@ interface PendingConflict {
 
 async function fetchEntries(dirPath: string): Promise<FileNode[]> {
   const encoded = encodeFilePathForApi(dirPath);
-  const res = await fetch(apiUrl(`/api/files/${encoded}?type=list`));
+  const res = await apiFetch(`/api/files/${encoded}?type=list`);
   if (!res.ok) {
     let message = `Failed to load files (HTTP ${res.status})`;
     try {

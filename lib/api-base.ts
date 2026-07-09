@@ -31,3 +31,30 @@ export function apiUrl(path: string): string {
  * treats it as an opaque label for the in-memory session cwd.
  */
 export const CF_CWD = process.env.NEXT_PUBLIC_CF_CWD || "/workspace";
+
+/** Backend login URL that bounces back to `returnTo` after Feishu OAuth. */
+export function loginUrl(returnTo: string): string {
+  return apiUrl(`/api/auth/feishu/login?return=${encodeURIComponent(returnTo)}`);
+}
+
+// One navigation is enough when several parallel calls 401 together.
+let redirectingToLogin = false;
+
+/**
+ * D2a: authenticated fetch for ALL backend API calls. The backend Worker sits
+ * on another origin behind a login gate keyed by the `pi_session` cookie, so
+ * every call must send credentials; a 401 means "not logged in" and bounces
+ * the browser through the backend's Feishu login, returning to the current
+ * URL afterwards. (EventSource can't intercept 401s — AppShell's mount-time
+ * /api/auth/me probe via this wrapper is what reliably opens the login door.)
+ *
+ * Always use this instead of `fetch(apiUrl(...))`.
+ */
+export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
+  const res = await fetch(apiUrl(path), { ...init, credentials: "include" });
+  if (res.status === 401 && typeof window !== "undefined" && !redirectingToLogin) {
+    redirectingToLogin = true;
+    window.location.href = loginUrl(window.location.href);
+  }
+  return res;
+}

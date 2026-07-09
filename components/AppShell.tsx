@@ -17,7 +17,7 @@ import { copyText } from "@/lib/clipboard";
 import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch, apiUrl, loginUrl } from "@/lib/api-base";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -48,6 +48,32 @@ export function AppShell() {
   }, [isMobile]);
   useEffect(() => {
     setMobileSidebarReady(true);
+  }, []);
+
+  // ── D2a login door ──────────────────────────────────────────────────────
+  // Probe /api/auth/me on mount: a logged-out browser 401s here and apiFetch
+  // bounces it through the backend's Feishu login (EventSource cannot
+  // intercept 401s, so this probe is what reliably opens the door).
+  const [authUser, setAuthUser] = useState<{ userId: string; name?: string } | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    void apiFetch("/api/auth/me")
+      .then((res) => (res.ok ? (res.json() as Promise<{ userId: string; name?: string }>) : null))
+      .then((user) => {
+        if (!cancelled && user) setAuthUser(user);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  const handleLogout = useCallback(async () => {
+    try {
+      await apiFetch("/api/auth/logout", { method: "POST" });
+    } catch {
+      // Best-effort — go to the login page either way.
+    }
+    window.location.href = loginUrl(window.location.href);
   }, []);
   const chatInputRef = useRef<ChatInputHandle | null>(null);
   const topBarRef = useRef<HTMLDivElement>(null);
@@ -234,7 +260,7 @@ export function AppShell() {
   // handleCwdChange relies on. Hydrate it from the session list so switching
   // worktrees right after creating a session doesn't close the chat.
   const hydrateSelectedSession = useCallback((sessionId: string) => {
-    void fetch(apiUrl("/api/sessions"))
+    void apiFetch("/api/sessions")
       .then((r) => (r.ok ? (r.json() as Promise<{ sessions: SessionInfo[] }>) : null))
       .then((d) => {
         const full = d?.sessions.find((s) => s.id === sessionId);
@@ -586,6 +612,43 @@ export function AppShell() {
               </svg>
             )}
           </button>
+          {/* D2a: logged-in Feishu user + logout (session cookie lives on the
+              backend origin; logout clears it there, then re-enters login). */}
+          {authUser && (
+            <div
+              title={authUser.userId}
+              style={{
+                display: "flex", alignItems: "center", gap: 8,
+                height: "100%", padding: "0 12px",
+                borderRight: "1px solid var(--border)",
+                color: "var(--text-muted)", fontSize: 11,
+                whiteSpace: "nowrap", flexShrink: 0,
+              }}
+            >
+              <span style={{ maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis" }}>
+                {authUser.name ?? authUser.userId}
+              </span>
+              <button
+                type="button"
+                onClick={handleLogout}
+                title="Log out"
+                aria-label="Log out"
+                style={{
+                  display: "flex", alignItems: "center", padding: 0,
+                  background: "none", border: "none",
+                  color: "var(--text-dim)", cursor: "pointer", transition: "color 0.12s",
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.color = "var(--text)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.color = "var(--text-dim)"; }}
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                  <polyline points="16 17 21 12 16 7" />
+                  <line x1="21" y1="12" x2="9" y2="12" />
+                </svg>
+              </button>
+            </div>
+          )}
           {showChat && (
             <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
               <button

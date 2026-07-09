@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch, apiUrl } from "@/lib/api-base";
 // Color icons (have their own fill colors — no background needed)
 import AnthropicIcon from "@lobehub/icons/es/Anthropic/components/Mono";
 import OpenAIIcon from "@lobehub/icons/es/OpenAI/components/Mono";
@@ -544,7 +544,7 @@ function ModelDetail({
     if (!model.id.trim() || testState.phase === "testing") return;
     setTestState({ phase: "testing" });
     try {
-      const res = await fetch(apiUrl("/api/models-config/test"), {
+      const res = await apiFetch("/api/models-config/test", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerName, provider, model }),
@@ -783,7 +783,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   }, [provider.id, onRefresh]);
 
   const handleLogout = useCallback(async () => {
-    await fetch(apiUrl(`/api/auth/logout/${encodeURIComponent(provider.id)}`), { method: "POST" });
+    await apiFetch(`/api/auth/logout/${encodeURIComponent(provider.id)}`, { method: "POST" });
     setLoginState({ phase: "idle" });
     onRefresh();
   }, [provider.id, onRefresh]);
@@ -792,7 +792,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
     if (!code.trim()) return;
     setLoginState({ phase: "progress", message: "Verifying…" });
     try {
-      const res = await fetch(apiUrl(`/api/auth/login/${encodeURIComponent(provider.id)}`), {
+      const res = await apiFetch(`/api/auth/login/${encodeURIComponent(provider.id)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, code: code.trim() }),
@@ -812,7 +812,7 @@ function OAuthDetail({ provider, onRefresh }: { provider: OAuthProvider; onRefre
   const submitSelection = useCallback(async (token: string, value: string) => {
     setLoginState({ phase: "progress", message: "Continuing…" });
     try {
-      const res = await fetch(apiUrl(`/api/auth/login/${encodeURIComponent(provider.id)}`), {
+      const res = await apiFetch(`/api/auth/login/${encodeURIComponent(provider.id)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token, code: value }),
@@ -986,7 +986,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
     setError(null);
     setSavedOk(false);
     try {
-      const res = await fetch(apiUrl(`/api/auth/api-key/${encodeURIComponent(provider.id)}`), {
+      const res = await apiFetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey: apiKey.trim() }),
@@ -1011,7 +1011,7 @@ function ApiKeyDetail({ provider, onRefresh }: { provider: ApiKeyProvider; onRef
     setRemoving(true);
     setError(null);
     try {
-      const res = await fetch(apiUrl(`/api/auth/api-key/${encodeURIComponent(provider.id)}`), { method: "DELETE" });
+      const res = await apiFetch(`/api/auth/api-key/${encodeURIComponent(provider.id)}`, { method: "DELETE" });
       const d = await res.json() as { success?: boolean; error?: string };
       if (!res.ok || d.error) setError(d.error ?? `HTTP ${res.status}`);
       else onRefresh();
@@ -1285,21 +1285,21 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
   const [pickerOpen, setPickerOpen] = useState(false);
 
   const loadOAuthProviders = useCallback(() => {
-    fetch(apiUrl("/api/auth/providers"))
+    apiFetch("/api/auth/providers")
       .then((r) => r.json())
       .then((d: { providers: OAuthProvider[] }) => setOauthProviders(d.providers))
       .catch(() => {});
   }, []);
 
   const loadApiKeyProviders = useCallback(() => {
-    fetch(apiUrl("/api/auth/all-providers"))
+    apiFetch("/api/auth/all-providers")
       .then((r) => r.json())
       .then((d: { providers: ApiKeyProvider[] }) => setApiKeyProviders(d.providers))
       .catch(() => {});
   }, []);
 
   useEffect(() => {
-    fetch(apiUrl("/api/models-config"))
+    apiFetch("/api/models-config")
       .then((r) => r.json())
       .then((d: ModelsJson) => {
         const normalized = d.providers ? d : { ...d, providers: {} };
@@ -1391,7 +1391,7 @@ export function ModelsConfig({ onClose }: { onClose: () => void }) {
     setSaveError(null);
     setSavedOk(false);
     try {
-      const res = await fetch(apiUrl("/api/models-config"), {
+      const res = await apiFetch("/api/models-config", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(config),

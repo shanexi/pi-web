@@ -13,7 +13,7 @@ import { normalizeToolCalls } from "@/lib/normalize";
 import { sendAgentCommand } from "@/lib/agent-client";
 import { getToolNamesForPreset, type ToolEntry } from "@/lib/tool-presets";
 import type { SessionStatsInfo } from "@/lib/pi-types";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch, apiUrl } from "@/lib/api-base";
 
 export interface SessionData {
   sessionId: string;
@@ -538,7 +538,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const selectedModel = newSessionModel ?? newSessionDefaultModel;
       if (selectedModel) setPendingModel(selectedModel);
       const toolNames = getToolNamesForPreset(toolPreset);
-      const res = await fetch(apiUrl("/api/agent/new"), {
+      const res = await apiFetch("/api/agent/new", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -590,7 +590,11 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       eventSourceRef.current.close();
       eventSourceRef.current = null;
     }
-    const es = new EventSource(apiUrl(`/api/agent/${encodeURIComponent(sid)}/events`));
+    // D2a: the backend gate keys on the pi_session cookie — same-site but
+    // cross-origin, so the SSE connection must opt into credentials.
+    const es = new EventSource(apiUrl(`/api/agent/${encodeURIComponent(sid)}/events`), {
+      withCredentials: true,
+    });
     eventSourceRef.current = es;
 
     return new Promise((resolve) => {
@@ -760,7 +764,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     while (agentRunningRef.current && Date.now() - startedAt < PROMPT_SETTLE_MAX_MS) {
       if (runId !== undefined && promptRunIdRef.current !== runId) return;
       try {
-        const res = await fetch(apiUrl(`/api/agent/${encodeURIComponent(sid)}`));
+        const res = await apiFetch(`/api/agent/${encodeURIComponent(sid)}`);
         if (res.ok) {
           const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
           const state = data.state;
@@ -785,7 +789,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     if (!agentRunningRef.current) return;
     const runId = promptRunIdRef.current;
     try {
-      const res = await fetch(apiUrl(`/api/agent/${encodeURIComponent(sid)}`));
+      const res = await apiFetch(`/api/agent/${encodeURIComponent(sid)}`);
       if (!res.ok) return;
       const data = await res.json() as { running?: boolean; state?: AgentStateResponse };
       // A slow response can straddle a run boundary (previous run finished
@@ -860,7 +864,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         dispatch({ type: "end" });
         if (sessionIdRef.current) {
           loadSession(sessionIdRef.current);
-          fetch(apiUrl(`/api/agent/${encodeURIComponent(sessionIdRef.current)}`))
+          apiFetch(`/api/agent/${encodeURIComponent(sessionIdRef.current)}`)
             .then((r) => r.json())
             .then((d: { state?: AgentStateResponse }) => {
               if (d.state?.contextUsage !== undefined) setContextUsage(d.state.contextUsage ?? null);

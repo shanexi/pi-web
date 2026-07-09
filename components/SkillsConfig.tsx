@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useIsMobile } from "@/hooks/useIsMobile";
-import { apiUrl } from "@/lib/api-base";
+import { apiFetch } from "@/lib/api-base";
 import type {
   SkillInfo as Skill,
   SkillInstallScope,
@@ -366,7 +366,7 @@ function AddSkillPanel({
     setSearchError(null);
     setResults([]);
     try {
-      const res = await fetch(apiUrl("/api/skills/search"), {
+      const res = await apiFetch("/api/skills/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ query: q.trim() }),
@@ -393,7 +393,7 @@ function AddSkillPanel({
       setInstalling(pkg);
       setInstallError(null);
       try {
-        const res = await fetch(apiUrl("/api/skills/install"), {
+        const res = await apiFetch("/api/skills/install", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ package: pkg, scope, cwd }),
@@ -694,20 +694,19 @@ export function SkillsConfig({
   const loadSkills = useCallback(async () => {
     setLoading(true);
     setError(null);
-    try {
-      const res = await fetch(apiUrl(`/api/skills?cwd=${encodeURIComponent(cwd)}`));
-      const d = (await res.json()) as { skills?: Skill[]; error?: string };
-      if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
-      const list = d.skills ?? [];
-      setSkills(list);
-      if (list.length > 0 && !selected) setSelected(list[0].filePath);
-      return list;
-    } catch (e) {
-      setError(String(e));
-      return [];
-    } finally {
-      setLoading(false);
-    }
+    apiFetch(`/api/skills?cwd=${encodeURIComponent(cwd)}`)
+      .then((r) => r.json())
+      .then((d: { skills?: Skill[]; error?: string }) => {
+        if (d.error) {
+          setError(d.error);
+          return;
+        }
+        const list = d.skills ?? [];
+        setSkills(list);
+        if (list.length > 0 && !selected) setSelected(list[0].filePath);
+      })
+      .catch((e) => setError(String(e)))
+      .finally(() => setLoading(false));
   }, [cwd, selected]);
 
   useEffect(() => {
@@ -809,7 +808,7 @@ export function SkillsConfig({
     setToggling((s) => new Set(s).add(skill.filePath));
     setSaveError(null);
     try {
-      const res = await fetch(apiUrl("/api/skills"), {
+      const res = await apiFetch("/api/skills", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
