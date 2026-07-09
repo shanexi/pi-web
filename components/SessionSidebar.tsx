@@ -3,6 +3,7 @@
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { apiUrl, CF_CWD } from "@/lib/api-base";
+import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 
 declare global {
@@ -1474,7 +1475,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       </div>
 
       {/* Session list */}
-      <div style={{ flex: explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
+      <div style={{ flex: LOCAL_PANELS && explorerOpen && (selectedCwdProp || selectedCwd) ? "1 1 0" : "1 1 auto", overflowY: "auto", padding: "0", minHeight: 80 }}>
         {loading && (
           <div style={{ padding: "16px 14px", color: "var(--text-muted)", fontSize: 12 }}>
             Loading...
@@ -1508,8 +1509,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         ))}
       </div>
 
-      {/* File Explorer section */}
-      {(selectedCwdProp || selectedCwd) && (
+      {/* File Explorer section — compile-time gated (LOCAL_PANELS, D0):
+          FileExplorer's mount fetch (/api/files/:path?type=list) has no
+          backing route on the agent Worker. D3 revives it sandbox-backed. */}
+      {LOCAL_PANELS && (selectedCwdProp || selectedCwd) && (
         <div
           style={{
             borderTop: "1px solid var(--border)",

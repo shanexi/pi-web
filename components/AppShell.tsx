@@ -14,6 +14,7 @@ import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
+import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import { apiUrl } from "@/lib/api-base";
@@ -289,6 +290,9 @@ export function AppShell() {
   }, [selectedSession, router]);
 
   const handleOpenFile = useCallback((filePath: string, fileName: string, sourceSessionId?: string | null) => {
+    // File panel is compile-time hidden (D0); never open tabs so the right
+    // panel (and FileViewer's file-watch EventSources) stays unmounted.
+    if (!LOCAL_PANELS) return;
     const tabId = `file:${filePath}`;
     setFileTabs((prev) => {
       const existing = prev.find((t) => t.id === tabId);
@@ -353,6 +357,7 @@ export function AppShell() {
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
       />
+      {LOCAL_PANELS && (
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
           {
@@ -415,6 +420,7 @@ export function AppShell() {
           </button>
         ))}
       </div>
+      )}
     </>
   );
 
@@ -717,7 +723,9 @@ export function AppShell() {
                   marginLeft: "auto",
                   display: "flex", alignItems: "center", gap: 10,
                   paddingLeft: 12,
-                  paddingRight: rightPanelOpen ? 12 : 48,
+                  // 48px only reserves room for the fixed file-panel toggle,
+                  // which is hidden when LOCAL_PANELS is off.
+                  paddingRight: LOCAL_PANELS && !rightPanelOpen ? 48 : 12,
                   height: "100%",
                   background: activeTopPanel === "session" ? "var(--bg-selected)" : "none",
                   border: "none",
@@ -1006,8 +1014,14 @@ export function AppShell() {
                 <div>
                   <div style={{ fontSize: 18, fontWeight: 600, color: "var(--text)", marginBottom: 8 }}>Get Started</div>
                   <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.8 }}>
-                    <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>Select a project directory from the sidebar<br />
-                    <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>Add models via the <strong style={{ color: "var(--text)" }}>Models</strong> button at the bottom
+                    {LOCAL_PANELS ? (
+                      <>
+                        <span style={{ color: "var(--text-dim)", marginRight: 6 }}>1.</span>Select a project directory from the sidebar<br />
+                        <span style={{ color: "var(--text-dim)", marginRight: 6 }}>2.</span>Add models via the <strong style={{ color: "var(--text)" }}>Models</strong> button at the bottom
+                      </>
+                    ) : (
+                      <>Select a project directory from the sidebar</>
+                    )}
                   </div>
                 </div>
               </div>
@@ -1016,7 +1030,10 @@ export function AppShell() {
         </div>
       </div>
 
-      {/* Right panel: file viewer — always mounted, width animated via CSS */}
+      {/* Right panel: file viewer — width animated via CSS; entry points are
+          compile-time gated (LOCAL_PANELS, D0) until D3 revives the file
+          panel with sandbox-backed file routes. */}
+      {LOCAL_PANELS && (
       <div
         className={`right-panel-container${rightPanelOpen ? " right-panel-open" : " right-panel-closed"}`}
         style={{
@@ -1059,8 +1076,10 @@ export function AppShell() {
           )}
         </div>
       </div>
+      )}
     </div>
-    {/* File panel toggle — always visible at top-right */}
+    {/* File panel toggle — top-right, hidden together with the file panel */}
+    {LOCAL_PANELS && (
     <button
       onClick={() => setRightPanelOpen((v) => !v)}
       title={rightPanelOpen ? "Hide file panel" : "Show file panel"}
@@ -1080,11 +1099,15 @@ export function AppShell() {
         <rect x="3" y="3" width="18" height="18" rx="2" /><line x1="15" y1="3" x2="15" y2="21" />
       </svg>
     </button>
-    {modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
-    {skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+    )}
+    {/* Config dialogs — entry buttons are gated above; the extra LOCAL_PANELS
+        here is defense-in-depth so ModelsConfig's OAuth-login EventSource
+        (/api/auth/login/:provider) can never be reached while hidden. */}
+    {LOCAL_PANELS && modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
+    {LOCAL_PANELS && skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />
     )}
-    {pluginsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+    {LOCAL_PANELS && pluginsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <PluginsConfig
         cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
         sessionId={selectedSession?.id ?? null}
