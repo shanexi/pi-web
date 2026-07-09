@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
+import { apiUrl, CF_CWD } from "@/lib/api-base";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
 
 declare global {
@@ -323,7 +324,11 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [allSessions, setAllSessions] = useState<SessionInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
+  // Synthetic cwd for Cloudflare Workers deployments: there is no local
+  // filesystem to pick a project directory from, so seed the selection with
+  // NEXT_PUBLIC_CF_CWD (default "/workspace") so "New session" works
+  // immediately without the local cwd-picker flow.
+  const [selectedCwd, setSelectedCwd] = useState<string | null>(CF_CWD);
   const [homeDir, setHomeDir] = useState<string>("");
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [projectFilter, setProjectFilter] = useState("");
@@ -362,8 +367,15 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const loadSessions = useCallback(async (showLoading = false) => {
     try {
       if (showLoading) setLoading(true);
-      const res = await fetch("/api/sessions");
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const res = await fetch(apiUrl("/api/sessions"));
+      if (!res.ok) {
+        // The backend Worker may not implement the sessions list yet
+        // (404/501). Degrade silently to an empty list instead of surfacing
+        // an error — the shell must stay usable for new sessions.
+        setAllSessions([]);
+        setError(null);
+        return;
+      }
       const data = await res.json() as { sessions: SessionInfo[]; runningSessionIds?: string[] };
       setAllSessions(data.sessions);
       // Treat the fetched running set as an initial fallback only. Once SSE is
@@ -404,26 +416,30 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     saveUnreadSessionIds(unreadSessionIds);
   }, [unreadSessionIds]);
 
-  useEffect(() => {
-    // Live running status via SSE — no polling. The server pushes the current
-    // set of running session ids whenever any session starts/stops working.
-    const source = new EventSource("/api/agent/running/events");
-
-    source.onmessage = (e) => {
-      try {
-        const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
-        if (data.type === "running") {
-          sseAuthoritativeRef.current = true;
-          setRunningSessionIds(new Set(data.runningSessionIds ?? []));
-        }
-      } catch {
-        // ignore malformed frames
-      }
-    };
-
-    // On error EventSource auto-reconnects; keep the last known state meanwhile.
-    return () => source.close();
-  }, []);
+  // DISABLED for Cloudflare Workers: the backend Worker does not serve
+  // GET /api/agent/running/events yet, and an always-on EventSource against a
+  // 404 route auto-reconnects forever, flooding the console with errors.
+  // Re-enable when Worker B serves the running/events stub in B1.
+  // useEffect(() => {
+  //   // Live running status via SSE — no polling. The server pushes the current
+  //   // set of running session ids whenever any session starts/stops working.
+  //   const source = new EventSource(apiUrl("/api/agent/running/events"));
+  //
+  //   source.onmessage = (e) => {
+  //     try {
+  //       const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
+  //       if (data.type === "running") {
+  //         sseAuthoritativeRef.current = true;
+  //         setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+  //       }
+  //     } catch {
+  //       // ignore malformed frames
+  //     }
+  //   };
+  //
+  //   // On error EventSource auto-reconnects; keep the last known state meanwhile.
+  //   return () => source.close();
+  // }, []);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
@@ -457,7 +473,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [explorerRefreshKey]);
 
   useEffect(() => {
-    fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
+    fetch(apiUrl("/api/home")).then((r) => r.json()).then((d: { home?: string }) => {
       if (d.home) setHomeDir(d.home);
     }).catch(() => {});
   }, []);
@@ -506,7 +522,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
     let cancelled = false;
     setWorktreeLoadingCwd(selectedCwd);
-    fetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
+    fetch(apiUrl(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`))
       .then((r) => r.json())
       .then((d: { projectRoot?: string; isGit?: boolean; isTopLevel?: boolean; worktrees?: WorktreeEntry[]; error?: string }) => {
         if (cancelled) return;
@@ -561,7 +577,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setCustomPathValidating(true);
     setCustomPathError(null);
     try {
-      const res = await fetch("/api/cwd/validate", {
+      const res = await fetch(apiUrl("/api/cwd/validate"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: path }),
@@ -608,7 +624,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
 
   const handleDefaultCwd = useCallback(async () => {
     try {
-      const res = await fetch("/api/default-cwd", { method: "POST" });
+      const res = await fetch(apiUrl("/api/default-cwd"), { method: "POST" });
       const data = await res.json() as { cwd?: string; error?: string };
       if (data.cwd) {
         setSelectedCwd(data.cwd);
@@ -628,7 +644,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setWtBusy(true);
     setWtError(null);
     try {
-      const res = await fetch("/api/worktrees", {
+      const res = await fetch(apiUrl("/api/worktrees"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: worktreeState.projectRoot, branch }),
@@ -663,7 +679,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setWtBusy(true);
     setWtError(null);
     try {
-      const res = await fetch("/api/worktrees", {
+      const res = await fetch(apiUrl("/api/worktrees"), {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: worktreeState.projectRoot, path, force }),
@@ -1794,7 +1810,7 @@ function SessionItem({
     setRenaming(false);
     if (name === (session.name ?? "")) return;
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      await fetch(apiUrl(`/api/sessions/${encodeURIComponent(session.id)}`), {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -1815,7 +1831,7 @@ function SessionItem({
     setConfirmDelete(false);
     setDeleting(true);
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      await fetch(apiUrl(`/api/sessions/${encodeURIComponent(session.id)}`), { method: "DELETE" });
       onDeleted?.(session.id);
     } catch {
       setDeleting(false);

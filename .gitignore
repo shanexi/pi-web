@@ -40,3 +40,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 .factory
+# cloudflare / opennext
+/.open-next/
+/.wrangler/
+cloudflare-env.d.ts
+
+# keep the env template tracked despite the .env* rule above
+!.env.example

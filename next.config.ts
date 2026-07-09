@@ -1,6 +1,13 @@
 import type { NextConfig } from "next";
+// node:fs here is fine: next.config.ts is evaluated at build time in Node,
+// not inside the Cloudflare Worker.
 import { readFileSync } from "fs";
 import { join } from "path";
+import { initOpenNextCloudflareForDev } from "@opennextjs/cloudflare";
+
+// Makes `next dev` aware of the Cloudflare bindings/vars in wrangler.jsonc
+// (no-op during `next build`).
+void initOpenNextCloudflareForDev();
 
 const { version } = JSON.parse(readFileSync(join(__dirname, "package.json"), "utf8")) as { version: string };
 let piVersion = "unknown";

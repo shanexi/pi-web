@@ -1,0 +1,27 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "pi-web",
+  "main": ".open-next/worker.js",
+  "compatibility_date": "2026-04-01",
+  "compatibility_flags": ["nodejs_compat", "global_fetch_strictly_public"],
+  "assets": {
+    "directory": ".open-next/assets",
+    "binding": "ASSETS"
+  },
+  "services": [
+    {
+      // Self-reference service binding required by @opennextjs/cloudflare
+      // (the service name must match the worker name).
+      "binding": "WORKER_SELF_REFERENCE",
+      "service": "pi-web"
+    }
+  ],
+  // NOTE: NEXT_PUBLIC_* values are inlined into the client bundle by
+  // `next build`, so the values that actually reach the browser come from the
+  // build environment (e.g. a .env file — see .env.example). The vars below
+  // only document the deployment defaults / cover any server-side reads.
+  "vars": {
+    "NEXT_PUBLIC_AGENT_BASE_URL": "https://pi-cf.bitter-fog-5f6d.workers.dev",
+    "NEXT_PUBLIC_CF_CWD": "/workspace"
+  }
+}
