@@ -429,7 +429,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       if (showLoading) setLoading(true);
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
-      const res = await fetch(apiUrl(`/api/sessions/${encodeURIComponent(sid)}?${params}`));
+      const res = await apiFetch(`/api/sessions/${encodeURIComponent(sid)}?${params}`);
       if (res.status === 404) {
         if (showLoading) {
           setData(null);
@@ -490,8 +490,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
     try {
       const params = new URLSearchParams({ deferThinking: "1", deferMedia: "1" });
       if (leafId) params.set("leafId", leafId);
-      const url = apiUrl(`/api/sessions/${encodeURIComponent(sid)}/context?${params}`);
-      const res = await fetch(url);
+      const res = await apiFetch(`/api/sessions/${encodeURIComponent(sid)}/context?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
       setMessages(d.context.messages);
@@ -1170,8 +1169,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
 
   const loadModels = useCallback(async (signal?: AbortSignal) => {
     const modelCwd = newSessionCwd ?? session?.cwd ?? "";
-    const modelsUrl = modelCwd ? apiUrl(`/api/models?cwd=${encodeURIComponent(modelCwd)}`) : apiUrl("/api/models");
-    const res = await fetch(modelsUrl, signal ? { signal } : undefined);
+    const modelsPath = modelCwd ? `/api/models?cwd=${encodeURIComponent(modelCwd)}` : "/api/models";
+    const res = await apiFetch(modelsPath, signal ? { signal } : undefined);
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const d = await res.json() as ModelsResponse;
     setModelNames(d.models);
