@@ -15,7 +15,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
 import { downloadSessionExport } from "@/lib/session-export";
-import { FILE_PANELS, LOCAL_PANELS, SKILLS_PANEL } from "@/lib/feature-flags";
+import { EXTENSIONS_PANEL, FILE_PANELS, LOCAL_PANELS, SKILLS_PANEL } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import { apiFetch, apiUrl, loginUrl } from "@/lib/api-base";
@@ -395,7 +395,7 @@ export function AppShell() {
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
       />
-      {(LOCAL_PANELS || SKILLS_PANEL) && (
+      {(LOCAL_PANELS || SKILLS_PANEL || EXTENSIONS_PANEL) && (
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
           // E3: Skills rides its own flag (sandbox-backed routes exist);
@@ -426,10 +426,12 @@ export function AppShell() {
               </svg>
             ),
           }] : []),
-          ...(LOCAL_PANELS ? [{
+          // E7: Plugins rides its own flag (built-in extension enable/disable,
+          // no cwd needed — extensions are per-user, not per-workspace).
+          ...(EXTENSIONS_PANEL ? [{
             label: "Plugins",
             onClick: () => setPluginsConfigOpen(true),
-            disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
+            disabled: false,
             icon: (
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M9 7V2" />
@@ -1183,9 +1185,8 @@ export function AppShell() {
     {SKILLS_PANEL && skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />
     )}
-    {LOCAL_PANELS && pluginsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+    {EXTENSIONS_PANEL && pluginsConfigOpen && (
       <PluginsConfig
-        cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!}
         sessionId={selectedSession?.id ?? null}
         onClose={() => setPluginsConfigOpen(false)}
         onReloaded={() => setSessionKey((k) => k + 1)}

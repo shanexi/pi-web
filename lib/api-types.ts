@@ -89,3 +89,20 @@ export interface PluginsResponse {
   totals: PluginResourceCounts;
   diagnostics: PluginDiagnostic[];
 }
+
+// E7: the fork's Plugins panel is an ENABLE/DISABLE toggler for the agent
+// Worker's compile-time built-in extensions (GET/PATCH /api/plugins). The
+// upstream package-manager shape (PluginPackageInfo/PluginsResponse) is unused
+// on the agent Worker — those routes don't exist there.
+export interface ExtensionInfo {
+  /** Stable built-in id (the PATCH toggle keys on this). */
+  id: string;
+  /** One-line description surfaced in the panel. */
+  description: string;
+  /** Whether the current user has this built-in enabled (default true). */
+  enabled: boolean;
+}
+
+export interface ExtensionsResponse {
+  extensions: ExtensionInfo[];
+}
