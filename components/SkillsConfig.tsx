@@ -353,7 +353,12 @@ function AddSkillPanel({
   const [newlyInstalledPkgs, setNewlyInstalledPkgs] = useState<Set<string>>(
     new Set(),
   );
-  const [scope, setScope] = useState<"global" | "project">("global");
+  // E3 (sandbox backend): installs are ALWAYS project-scoped into the
+  // per-user workspace — the Worker runs `npx skills add <pkg> -y --agent pi`
+  // with cwd=/workspace and never -g (global would land in the sandbox HOME,
+  // invisible to the runtime's /workspace/.pi/skills scan). The old
+  // global/project toggle is gone with the local backend.
+  const scope = "project" as const;
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -416,10 +421,9 @@ function AddSkillPanel({
     [onInstalled, scope, cwd],
   );
 
-  const installPath =
-    scope === "global"
-      ? "~/.pi/agent/skills/"
-      : `${shortenPath(cwd)}/.pi/skills/`;
+  // The sandbox workspace root is fixed server-side; the skills CLI's
+  // project-scope layout under it is what the runtime scans.
+  const installPath = "/workspace/.pi/skills/";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
@@ -476,37 +480,9 @@ function AddSkillPanel({
           </button>
         </div>
 
-        {/* Scope + install path row */}
+        {/* Install path row — scope toggle removed: sandbox installs are
+            always project-scoped into the workspace (see `scope` above). */}
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div
-            style={{
-              display: "flex",
-              borderRadius: 5,
-              border: "1px solid var(--border)",
-              overflow: "hidden",
-              fontSize: 12,
-              flexShrink: 0,
-            }}
-          >
-            {(["global", "project"] as const).map((s) => (
-              <button
-                key={s}
-                onClick={() => setScope(s)}
-                style={{
-                  padding: "3px 10px",
-                  border: "none",
-                  cursor: "pointer",
-                  background: scope === s ? "var(--bg-selected)" : "none",
-                  color: scope === s ? "var(--text)" : "var(--text-dim)",
-                  fontWeight: scope === s ? 600 : 400,
-                  borderRight:
-                    s === "global" ? "1px solid var(--border)" : "none",
-                }}
-              >
-                {s}
-              </button>
-            ))}
-          </div>
           <span
             style={{
               fontSize: 12,

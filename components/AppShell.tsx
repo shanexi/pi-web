@@ -15,7 +15,7 @@ import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
 import { downloadSessionExport } from "@/lib/session-export";
-import { FILE_PANELS, LOCAL_PANELS } from "@/lib/feature-flags";
+import { FILE_PANELS, LOCAL_PANELS, SKILLS_PANEL } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
 import { apiFetch, apiUrl, loginUrl } from "@/lib/api-base";
@@ -395,10 +395,12 @@ export function AppShell() {
         onAtMention={handleAtMention}
         onAtMentions={handleAtMentions}
       />
-      {LOCAL_PANELS && (
+      {(LOCAL_PANELS || SKILLS_PANEL) && (
       <div style={{ padding: "8px", flexShrink: 0, display: "flex", justifyContent: "space-between", gap: 4 }}>
         {([
-          {
+          // E3: Skills rides its own flag (sandbox-backed routes exist);
+          // Models/Plugins stay under LOCAL_PANELS (no backend — see flags).
+          ...(LOCAL_PANELS ? [{
             label: "Models",
             onClick: () => setModelsConfigOpen(true),
             disabled: false,
@@ -411,8 +413,8 @@ export function AppShell() {
                 <line x1="1" y1="9" x2="4" y2="9" /><line x1="1" y1="14" x2="4" y2="14" />
               </svg>
             ),
-          },
-          {
+          }] : []),
+          ...(SKILLS_PANEL ? [{
             label: "Skills",
             onClick: () => setSkillsConfigOpen(true),
             disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
@@ -423,8 +425,8 @@ export function AppShell() {
                 <path d="M2 12l10 5 10-5" />
               </svg>
             ),
-          },
-          {
+          }] : []),
+          ...(LOCAL_PANELS ? [{
             label: "Plugins",
             onClick: () => setPluginsConfigOpen(true),
             disabled: !activeCwd && !selectedSession?.cwd && !newSessionCwd,
@@ -436,7 +438,7 @@ export function AppShell() {
                 <path d="M12 19v3" />
               </svg>
             ),
-          },
+          }] : []),
         ] as { label: string; onClick: () => void; disabled: boolean; icon: React.ReactNode }[]).map(({ label, onClick, disabled, icon }) => (
           <button
             key={label}
@@ -1178,7 +1180,7 @@ export function AppShell() {
         here is defense-in-depth so ModelsConfig's OAuth-login EventSource
         (/api/auth/login/:provider) can never be reached while hidden. */}
     {LOCAL_PANELS && modelsConfigOpen && <ModelsConfig onClose={() => { setModelsConfigOpen(false); setModelsRefreshKey((k) => k + 1); }} />}
-    {LOCAL_PANELS && skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
+    {SKILLS_PANEL && skillsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
       <SkillsConfig cwd={(activeCwd ?? selectedSession?.cwd ?? newSessionCwd)!} onClose={() => setSkillsConfigOpen(false)} />
     )}
     {LOCAL_PANELS && pluginsConfigOpen && (activeCwd ?? selectedSession?.cwd ?? newSessionCwd) && (
