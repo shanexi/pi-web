@@ -306,7 +306,10 @@ export interface AttachedImage {
 }
 
 type SelectedModel = { provider: string; modelId: string };
-type ModelEntry = { id: string; name: string; provider: string };
+// E5: `input` carries the model's accepted content kinds so the composer can
+// gate image attachment on a text-only model. Optional — a pre-E5 /api/models
+// payload (or an unknown provider) simply omits it and the UI stays permissive.
+type ModelEntry = { id: string; name: string; provider: string; input?: ("text" | "image")[] };
 type ModelsResponse = {
   models: Record<string, string>;
   modelList?: ModelEntry[];

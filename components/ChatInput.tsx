@@ -33,7 +33,7 @@ interface Props {
   model?: { provider: string; modelId: string } | null;
   isAutoModelSelection?: boolean;
   modelNames?: Record<string, string>;
-  modelList?: { id: string; name: string; provider: string }[];
+  modelList?: { id: string; name: string; provider: string; input?: ("text" | "image")[] }[];
   onModelChange?: (provider: string, modelId: string) => void;
   onCompact?: () => void;
   onAbortCompaction?: () => void;
@@ -153,6 +153,62 @@ function draftImageToAttachedImage(image: ChatDraftImage): AttachedImage {
 function revokeImagePreview(image: AttachedImage): void {
   if (image.previewUrl.startsWith("blob:")) {
     URL.revokeObjectURL(image.previewUrl);
+  }
+}
+
+// E5: client-side compression before send. The DO RPC command body and its
+// `entries` sql mirror — not the edge's 100MB request ceiling — are the real
+// size bottleneck, and the backend hard-caps the body at ~8MB (HTTP 413). A raw
+// phone photo is tens of MB of base64; downscaling the long edge to 1568px (the
+// resolution vision models see anyway) and re-encoding as JPEG q0.8 brings a
+// single image to well under 1MB with no quality loss the model can perceive.
+const MAX_IMAGE_DIMENSION = 1568;
+const JPEG_QUALITY = 0.8;
+
+function blobToBase64(blob: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result as string;
+      // "data:<mime>;base64,<data>" → the raw base64 pi's ImageContent wants.
+      resolve(result.slice(result.indexOf(",") + 1));
+    };
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Downscale + re-encode an image File to a compact JPEG. Falls back to the
+ * original bytes if the browser can't decode it (createImageBitmap/canvas
+ * unavailable or a format like SVG) — still bounded by the server's 413 cap.
+ */
+async function compressImageFile(file: File): Promise<AttachedImage> {
+  try {
+    const bitmap = await createImageBitmap(file);
+    const longEdge = Math.max(bitmap.width, bitmap.height);
+    const scale = longEdge > MAX_IMAGE_DIMENSION ? MAX_IMAGE_DIMENSION / longEdge : 1;
+    const w = Math.max(1, Math.round(bitmap.width * scale));
+    const h = Math.max(1, Math.round(bitmap.height * scale));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("no 2d context");
+    // JPEG has no alpha — matte transparent regions to white instead of black.
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(bitmap, 0, 0, w, h);
+    bitmap.close?.();
+    const blob = await new Promise<Blob | null>((resolve) =>
+      canvas.toBlob(resolve, "image/jpeg", JPEG_QUALITY),
+    );
+    if (!blob) throw new Error("canvas.toBlob returned null");
+    const data = await blobToBase64(blob);
+    return { data, mimeType: "image/jpeg", previewUrl: URL.createObjectURL(blob) };
+  } catch {
+    const data = await blobToBase64(file);
+    return { data, mimeType: file.type || "image/jpeg", previewUrl: URL.createObjectURL(file) };
   }
 }
 
@@ -298,28 +354,26 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     },
   }));
 
+  // E5: does the currently-selected model accept image input? Text-only models
+  // (e.g. deepseek-v4-pro) can't read attachments, so the composer gates them.
+  // Permissive when capability is unknown (older payload / unlisted model).
+  const currentModelInput = modelList?.find(
+    (m) => model != null && m.id === model.modelId && m.provider === model.provider,
+  )?.input;
+  const modelSupportsImages = !currentModelInput || currentModelInput.includes("image");
+  // Attachments held against a text-only model block the send (backend 415s them).
+  const imagesBlockSend = attachedImages.length > 0 && !modelSupportsImages;
+
   const processImageFiles = useCallback(async (files: File[]) => {
     if (isStreaming) return;
+    // Never attach to a text-only model — the backend would 415 the send.
+    if (!modelSupportsImages) return;
     const imageFiles = files.filter((f) => f.type.startsWith("image/"));
     if (!imageFiles.length) return;
-    const newImages = await Promise.all(
-      imageFiles.map(
-        (file) =>
-          new Promise<AttachedImage>((resolve, reject) => {
-            const reader = new FileReader();
-            reader.onload = () => {
-              const result = reader.result as string;
-              // result is "data:<mime>;base64,<data>"
-              const base64 = result.split(",")[1];
-              resolve({ data: base64, mimeType: file.type, previewUrl: URL.createObjectURL(file) });
-            };
-            reader.onerror = reject;
-            reader.readAsDataURL(file);
-          })
-      )
-    );
+    // Downscale + re-encode client-side so the command body stays under the cap.
+    const newImages = await Promise.all(imageFiles.map(compressImageFile));
     setAttachedImages((prev) => [...prev, ...newImages]);
-  }, [isStreaming]);
+  }, [isStreaming, modelSupportsImages]);
 
   const removeImage = useCallback((index: number) => {
     setAttachedImages((prev) => {
@@ -394,6 +448,9 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     const msg = value.trim();
     if (!msg && !attachedImages.length) return;
     if (isStreaming) return;
+    // E5: never send images to a text-only model — the backend 415s them. The
+    // warning banner tells the user to remove them or switch models.
+    if (attachedImages.length && !modelSupportsImages) return;
     onAudioUnlock?.();
     if (!attachedImages.length && msg.startsWith("/") && onBuiltinCommand) {
       const result = await onBuiltinCommand(msg);
@@ -404,7 +461,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
     }
     onSend(msg, attachedImages.length ? attachedImages : undefined);
     clearInput();
-  }, [value, attachedImages, isStreaming, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
+  }, [value, attachedImages, isStreaming, modelSupportsImages, onBuiltinCommand, onSend, clearInput, onAudioUnlock]);
 
   const slashQuery = value.startsWith("/") && !/\s/.test(value.slice(1))
     ? value.slice(1).toLowerCase()
@@ -885,7 +942,7 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
         type="file"
         accept="image/*"
         multiple
-        disabled={isStreaming}
+        disabled={isStreaming || !modelSupportsImages}
         style={{ display: "none" }}
         onChange={(e) => {
           const files = Array.from(e.target.files ?? []);
@@ -988,6 +1045,22 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
               <polyline points="20 6 9 17 4 12" />
             </svg>
             {compactResultText}
+          </div>
+        )}
+        {/* E5: text-only model still holding attachments (e.g. after switching
+            models mid-compose) — warn and block send until they're removed. */}
+        {attachedImages.length > 0 && !modelSupportsImages && (
+          <div style={{
+            marginBottom: 8, padding: "5px 10px",
+            background: "rgba(234,179,8,0.08)", border: "1px solid rgba(234,179,8,0.25)",
+            borderRadius: 6, fontSize: 12, color: "rgba(180,130,0,0.9)",
+            display: "flex", alignItems: "center", gap: 6,
+          }}>
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z" />
+              <line x1="12" y1="9" x2="12" y2="13" /><line x1="12" y1="17" x2="12.01" y2="17" />
+            </svg>
+            This model can&apos;t read images. Remove the attachment or switch to a vision model.
           </div>
         )}
         {/* Image previews */}
@@ -1362,21 +1435,21 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           ) : (
             <button
               onClick={handleSend}
-              disabled={!value.trim() && !attachedImages.length}
+              disabled={(!value.trim() && !attachedImages.length) || imagesBlockSend}
               style={{
                 flexShrink: 0,
                 alignSelf: "flex-end",
                 display: "flex", alignItems: "center", gap: 6,
                 padding: "7px 14px",
-                background: (value.trim() || attachedImages.length) ? "var(--accent)" : "var(--bg-panel)",
+                background: ((value.trim() || attachedImages.length) && !imagesBlockSend) ? "var(--accent)" : "var(--bg-panel)",
                 border: "none",
                 borderRadius: 8,
-                color: (value.trim() || attachedImages.length) ? "#fff" : "var(--text-dim)",
-                cursor: (value.trim() || attachedImages.length) ? "pointer" : "not-allowed",
+                color: ((value.trim() || attachedImages.length) && !imagesBlockSend) ? "#fff" : "var(--text-dim)",
+                cursor: ((value.trim() || attachedImages.length) && !imagesBlockSend) ? "pointer" : "not-allowed",
                 fontSize: 13,
                 fontWeight: 600,
                 letterSpacing: "-0.01em",
-                boxShadow: (value.trim() || attachedImages.length) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
+                boxShadow: ((value.trim() || attachedImages.length) && !imagesBlockSend) ? "0 1px 3px rgba(37,99,235,0.25)" : "none",
                 transition: "background 0.15s, box-shadow 0.15s",
               }}
             >
@@ -1403,20 +1476,20 @@ export const ChatInput = forwardRef<ChatInputHandle, Props>(function ChatInput({
           <div style={{ flex: isMobile ? "1 1 auto" : "0 0 auto", minWidth: 0, display: "flex", alignItems: "center", gap: 2 }}>
             <button
               onClick={() => fileInputRef.current?.click()}
-              disabled={isStreaming}
-              title="Attach image"
+              disabled={isStreaming || !modelSupportsImages}
+              title={!modelSupportsImages ? "This model is text-only — switch to a vision model to attach images" : "Attach image"}
               style={{
                 flexShrink: 0, display: "flex", alignItems: "center", justifyContent: "center",
                 width: 32, height: 32, padding: 0,
                 background: "none", border: "none",
                 borderRadius: 9,
                 color: attachedImages.length ? "var(--accent)" : "var(--text-muted)",
-                cursor: isStreaming ? "not-allowed" : "pointer",
-                opacity: isStreaming ? 0.5 : 1,
+                cursor: (isStreaming || !modelSupportsImages) ? "not-allowed" : "pointer",
+                opacity: (isStreaming || !modelSupportsImages) ? 0.5 : 1,
                 transition: "background 0.12s, color 0.12s",
               }}
               onMouseEnter={(e) => {
-                if (isStreaming) return;
+                if (isStreaming || !modelSupportsImages) return;
                 e.currentTarget.style.background = "var(--bg-hover)";
                 e.currentTarget.style.color = attachedImages.length ? "var(--accent)" : "var(--text)";
               }}
