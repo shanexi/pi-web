@@ -26,9 +26,21 @@
 // Models stays hidden under LOCAL_PANELS=false (no write backend on the agent
 // Worker).
 //
+// THIRDPARTY_EXTENSIONS (E8c) layers the "THIRD-PARTY" section ON TOP of the E7
+// built-in toggler inside the SAME PluginsConfig panel: install/remove a
+// user-uploaded pi extension bundle (POST/DELETE /api/plugins), grant the
+// capabilities the install-time dry-run declared (v1: at most `modelSteering`),
+// and toggle it — each runs isolated in a per-owner Dynamic Worker (no network,
+// no secrets). This is independent of EXTENSIONS_PANEL, which stays as-is: flip
+// THIRDPARTY_EXTENSIONS back to false and the panel renders EXACTLY today's E7
+// built-in-only UI (regression-safe rollback for a DW-host regression), the
+// same分里程碑 pattern as E3 SKILLS_PANEL / E7 EXTENSIONS_PANEL. The fork can
+// ship this ahead of the backend since false = zero behavior change.
+//
 // The explicit `: boolean` annotations stop TypeScript from narrowing the
 // gated JSX into `never`-land, so hidden branches stay fully checked.
 export const LOCAL_PANELS: boolean = false;
 export const FILE_PANELS: boolean = true;
 export const SKILLS_PANEL: boolean = true;
 export const EXTENSIONS_PANEL: boolean = true;
+export const THIRDPARTY_EXTENSIONS: boolean = true;
