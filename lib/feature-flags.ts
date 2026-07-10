@@ -17,11 +17,18 @@
 // SKILLS_PANEL (E3) splits Skills OUT of LOCAL_PANELS: SkillsConfig is
 // revived on its own flag, backed by the agent Worker's sandbox skills
 // routes (GET/PATCH /api/skills, POST /api/skills/search, POST
-// /api/skills/install — all via apiFetch). Models/Plugins stay hidden under
-// LOCAL_PANELS=false (Models has no write backend; Plugins is E7).
+// /api/skills/install — all via apiFetch).
+//
+// EXTENSIONS_PANEL (E7) splits Plugins OUT of LOCAL_PANELS: PluginsConfig is
+// revived as an ENABLE/DISABLE toggler for the compile-time built-in
+// extensions (NOT the upstream package manager — no install/remove/search),
+// backed by the agent Worker's GET/PATCH /api/plugins routes via apiFetch.
+// Models stays hidden under LOCAL_PANELS=false (no write backend on the agent
+// Worker).
 //
 // The explicit `: boolean` annotations stop TypeScript from narrowing the
 // gated JSX into `never`-land, so hidden branches stay fully checked.
 export const LOCAL_PANELS: boolean = false;
 export const FILE_PANELS: boolean = true;
 export const SKILLS_PANEL: boolean = true;
+export const EXTENSIONS_PANEL: boolean = true;
