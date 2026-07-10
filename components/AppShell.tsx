@@ -14,6 +14,7 @@ import { BranchNavigator } from "./BranchNavigator";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
+import { downloadSessionExport } from "@/lib/session-export";
 import { FILE_PANELS, LOCAL_PANELS } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
@@ -357,6 +358,16 @@ export function AppShell() {
       "_blank",
       "noopener,noreferrer",
     );
+  }, [selectedSession]);
+
+  // E1: client-side export. The old server route (.../export) is gone on the
+  // Worker backend (it 404s), so generate the HTML transcript in the browser
+  // from the persisted history and trigger a download — no Worker route.
+  const handleExportSession = useCallback(() => {
+    if (!selectedSession) return;
+    void downloadSessionExport(selectedSession).catch(() => {
+      // Best-effort: a failed fetch/blob leaves the UI untouched.
+    });
   }, [selectedSession]);
 
   // Show chat area if a session is selected, or if we have a cwd to start a new session in

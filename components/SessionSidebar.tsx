@@ -2,7 +2,7 @@
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef, type CSSProperties, type ReactNode } from "react";
 import type { SessionInfo } from "@/lib/types";
-import { apiFetch, CF_CWD } from "@/lib/api-base";
+import { apiFetch, apiUrl, CF_CWD } from "@/lib/api-base";
 import { FILE_PANELS } from "@/lib/feature-flags";
 import { SandboxDirPicker } from "./SandboxDirPicker";
 import { FileExplorer, type FileExplorerHandle } from "./FileExplorer";
@@ -409,30 +409,30 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     saveUnreadSessionIds(unreadSessionIds);
   }, [unreadSessionIds]);
 
-  // DISABLED for Cloudflare Workers: the backend Worker does not serve
-  // GET /api/agent/running/events yet, and an always-on EventSource against a
-  // 404 route auto-reconnects forever, flooding the console with errors.
-  // Re-enable when Worker B serves the running/events stub in B1.
-  // useEffect(() => {
-  //   // Live running status via SSE — no polling. The server pushes the current
-  //   // set of running session ids whenever any session starts/stops working.
-  //   const source = new EventSource(apiUrl("/api/agent/running/events"));
-  //
-  //   source.onmessage = (e) => {
-  //     try {
-  //       const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
-  //       if (data.type === "running") {
-  //         sseAuthoritativeRef.current = true;
-  //         setRunningSessionIds(new Set(data.runningSessionIds ?? []));
-  //       }
-  //     } catch {
-  //       // ignore malformed frames
-  //     }
-  //   };
-  //
-  //   // On error EventSource auto-reconnects; keep the last known state meanwhile.
-  //   return () => source.close();
-  // }, []);
+  // E1: live running status via SSE — no polling. The backend RegistryDO
+  // (Worker B, B3) serves GET /api/agent/running/events for real now, pushing
+  // the current set of running session ids whenever any session starts/stops.
+  // withCredentials sends the pi_session cookie cross-origin (the route is
+  // behind the D2a gate); the first frame is a snapshot, so this becomes the
+  // source of truth as soon as it connects (sseAuthoritativeRef).
+  useEffect(() => {
+    const source = new EventSource(apiUrl("/api/agent/running/events"), { withCredentials: true });
+
+    source.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data) as { type?: string; runningSessionIds?: string[] };
+        if (data.type === "running") {
+          sseAuthoritativeRef.current = true;
+          setRunningSessionIds(new Set(data.runningSessionIds ?? []));
+        }
+      } catch {
+        // ignore malformed frames
+      }
+    };
+
+    // On error EventSource auto-reconnects; keep the last known state meanwhile.
+    return () => source.close();
+  }, []);
 
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
