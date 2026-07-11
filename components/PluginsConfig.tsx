@@ -198,6 +198,61 @@ function Chip({ children, mono }: { children: React.ReactNode; mono?: boolean })
   );
 }
 
+/** Segmented-control tab for the install mode toggle (Source / Paste). */
+function ModeTab({
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      aria-pressed={active}
+      style={{
+        fontSize: 12,
+        fontWeight: 600,
+        padding: "5px 12px",
+        borderRadius: 6,
+        cursor: disabled ? "not-allowed" : "pointer",
+        border: `1px solid ${active ? "var(--accent)" : "var(--border)"}`,
+        background: active ? "var(--accent)" : "transparent",
+        color: active ? "#fff" : "var(--text-muted)",
+        opacity: disabled ? 0.6 : 1,
+      }}
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A tiny spinning ring for the "resolving in your sandbox" state. */
+function Spinner() {
+  return (
+    <span
+      aria-hidden
+      style={{
+        display: "inline-block",
+        width: 12,
+        height: 12,
+        borderRadius: "50%",
+        border: "2px solid var(--border)",
+        borderTopColor: "var(--accent)",
+        animation: "pi-spin 0.7s linear infinite",
+      }}
+    >
+      <style>{"@keyframes pi-spin { to { transform: rotate(360deg); } }"}</style>
+    </span>
+  );
+}
+
 /**
  * One capability badge = a grant TOGGLE. Granted → filled pill "✓ <plain>"
  * (click to revoke); ungranted → outlined "Grant: <plain>" (click to grant).
@@ -251,19 +306,26 @@ function CapabilityBadge({
 }
 
 /**
- * The "+ Add extension" body: paste (or file-fill) a pre-bundled ESM module,
- * POST it, then — on 200 — show the server-derived manifest and the declared
+ * The "+ Add extension" body. Two modes (upstream pi.dev/packages parity):
+ *  - "From source" (default): type an `npm:`/`git:`/path Source string — the
+ *    owner sandbox resolves + esbuild-bundles it (§14.1). Always sandbox
+ *    transport. `id` is optional (derived from the package name).
+ *  - "Paste bundle" (the primitive): paste (or file-fill) a pre-bundled ESM
+ *    module — DW-first, sandbox-fallback. `id` required.
+ * On 200 either mode shows the server-derived manifest + the declared
  * capabilities to grant. Self-contained: it owns the install/grant POSTs and
- * reports every successful write up to the parent via onChanged (id + module),
- * so the parent can cache the bundle, reload the list, and mark dirty.
+ * reports every successful write up to the parent via onChanged (id + module|null
+ * + result), so the parent can cache a pasted bundle, reload the list, mark dirty.
  */
 function AddBundlePanel({
   onCancel,
   onChanged,
 }: {
   onCancel: () => void;
-  onChanged: (id: string, module: string, result: InstallExtensionResponse) => void;
+  onChanged: (id: string, module: string | null, result: InstallExtensionResponse) => void;
 }) {
+  const [mode, setMode] = useState<"source" | "paste">("source");
+  const [source, setSource] = useState("");
   const [module, setModule] = useState("");
   const [id, setId] = useState("");
   const [description, setDescription] = useState("");
@@ -277,24 +339,39 @@ function AddBundlePanel({
       setInstalling(true);
       setInstallError(null);
       try {
-        const req: InstallExtensionRequest = {
-          module,
-          id: id.trim(),
-          description: description.trim() || undefined,
-          version: version.trim() || undefined,
-          capabilities,
-        };
+        const trimmedId = id.trim();
+        // Source mode POSTs {source, id?} (id derived server-side when omitted);
+        // paste mode POSTs {module, id}. Never both — `source` OR `module`.
+        const req: InstallExtensionRequest =
+          mode === "source"
+            ? {
+                source: source.trim(),
+                id: trimmedId || undefined,
+                description: description.trim() || undefined,
+                version: version.trim() || undefined,
+                capabilities,
+              }
+            : {
+                module,
+                id: trimmedId,
+                description: description.trim() || undefined,
+                version: version.trim() || undefined,
+                capabilities,
+              };
         const res = await apiFetch("/api/plugins", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(req),
         });
         const d = (await res.json()) as InstallExtensionResponse & { error?: string };
-        // Server error body is always { error: string } (400 factory dry-run
+        // Server error body is always { error: string } (400 parse/resolve/factory
         // original text / 409 built-in collision / 413 caps). Surface it verbatim.
         if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
         setResult(d);
-        onChanged(req.id, module, d);
+        // The server owns a source bundle (never returned) → cache null; a pasted
+        // bundle is cached so a later row-level re-grant needs no re-upload. `d.id`
+        // is authoritative (a source install may have derived it).
+        onChanged(d.id, mode === "source" ? null : module, d);
         return d;
       } catch (err) {
         setInstallError(errText(err));
@@ -303,21 +380,28 @@ function AddBundlePanel({
         setInstalling(false);
       }
     },
-    [module, id, description, version, onChanged],
+    [mode, source, module, id, description, version, onChanged],
   );
 
   const install = useCallback(() => {
-    if (!module.trim()) {
-      setInstallError("Paste or choose a bundle module first.");
-      return;
-    }
-    if (!id.trim()) {
-      setInstallError("An extension id is required (lowercase, e.g. my-ext).");
-      return;
+    if (mode === "source") {
+      if (!source.trim()) {
+        setInstallError("Enter a source (e.g. npm:@scope/package).");
+        return;
+      }
+    } else {
+      if (!module.trim()) {
+        setInstallError("Paste or choose a bundle module first.");
+        return;
+      }
+      if (!id.trim()) {
+        setInstallError("An extension id is required (lowercase, e.g. my-ext).");
+        return;
+      }
     }
     // Install with no grants; capabilities are granted in the result step below.
     void post([]);
-  }, [module, id, post]);
+  }, [mode, source, module, id, post]);
 
   const onFile = useCallback(
     async (file: File | undefined) => {
@@ -433,61 +517,129 @@ function AddBundlePanel({
       ) : (
         // ── Install form ────────────────────────────────────────────────────
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <input
-              value={id}
-              onChange={(e) => setId(e.target.value)}
-              placeholder="id (required, e.g. protected-paths)"
-              spellCheck={false}
-              autoCapitalize="off"
-              style={{ ...inputStyle, flex: "2 1 180px", fontFamily: "var(--font-mono)" }}
-            />
-            <input
-              value={version}
-              onChange={(e) => setVersion(e.target.value)}
-              placeholder="version (optional)"
-              spellCheck={false}
-              style={{ ...inputStyle, flex: "1 1 90px" }}
-            />
+          {/* Mode toggle: Source (default, upstream parity) vs Paste bundle (primitive). */}
+          <div style={{ display: "flex", gap: 6 }}>
+            <ModeTab active={mode === "source"} onClick={() => setMode("source")} disabled={installing}>
+              From source
+            </ModeTab>
+            <ModeTab active={mode === "paste"} onClick={() => setMode("paste")} disabled={installing}>
+              Paste bundle
+            </ModeTab>
           </div>
-          <input
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            placeholder="description (optional)"
-            style={inputStyle}
-          />
-          <textarea
-            value={module}
-            onChange={(e) => setModule(e.target.value)}
-            placeholder="Paste the pre-bundled ESM module here (or choose a file below)…"
-            spellCheck={false}
-            style={{
-              ...inputStyle,
-              minHeight: 120,
-              resize: "vertical",
-              fontFamily: "var(--font-mono)",
-              lineHeight: 1.45,
-              whiteSpace: "pre",
-              overflowWrap: "normal",
-            }}
-          />
-          <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
-            <input
-              type="file"
-              accept=".js,.mjs,.txt,text/javascript,application/javascript"
-              onChange={(e) => void onFile(e.target.files?.[0])}
-              style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: "100%" }}
-            />
-          </div>
-          <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
-            Stored per-user. Most extensions run in an isolated Dynamic Worker (no network, no
-            secrets). Extensions that need node/shell run in your own sandbox (with your files +
-            network) instead — install shows which, and asks before granting anything.
-          </div>
+
+          {mode === "source" ? (
+            // ── Source mode: npm:/git:/path → resolved + bundled in your sandbox ──
+            <>
+              <input
+                value={source}
+                onChange={(e) => setSource(e.target.value)}
+                placeholder="npm:@scope/package"
+                spellCheck={false}
+                autoCapitalize="off"
+                autoCorrect="off"
+                style={{ ...inputStyle, fontFamily: "var(--font-mono)" }}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.6 }}>
+                Examples:{" "}
+                <Chip mono>npm:@scope/pi-plugin</Chip> <Chip mono>npm:my-pi-ext@1.2.0</Chip>{" "}
+                <Chip mono>git:https://github.com/user/repo</Chip>
+              </div>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  value={id}
+                  onChange={(e) => setId(e.target.value)}
+                  placeholder="id (optional — derived from the package name)"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  style={{ ...inputStyle, flex: "2 1 180px", fontFamily: "var(--font-mono)" }}
+                />
+                <input
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                  placeholder="version (optional)"
+                  spellCheck={false}
+                  style={{ ...inputStyle, flex: "1 1 90px" }}
+                />
+              </div>
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="description (optional)"
+                style={inputStyle}
+              />
+              <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+                Source extensions are resolved and bundled inside your own sandbox, so they always
+                run there (with your files, network, and shell) — install shows the exact tools,
+                events, and capabilities before you grant anything.
+              </div>
+            </>
+          ) : (
+            // ── Paste mode: the pre-bundled ESM primitive (local/dev) ────────────
+            <>
+              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+                <input
+                  value={id}
+                  onChange={(e) => setId(e.target.value)}
+                  placeholder="id (required, e.g. protected-paths)"
+                  spellCheck={false}
+                  autoCapitalize="off"
+                  style={{ ...inputStyle, flex: "2 1 180px", fontFamily: "var(--font-mono)" }}
+                />
+                <input
+                  value={version}
+                  onChange={(e) => setVersion(e.target.value)}
+                  placeholder="version (optional)"
+                  spellCheck={false}
+                  style={{ ...inputStyle, flex: "1 1 90px" }}
+                />
+              </div>
+              <input
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+                placeholder="description (optional)"
+                style={inputStyle}
+              />
+              <textarea
+                value={module}
+                onChange={(e) => setModule(e.target.value)}
+                placeholder="Paste the pre-bundled ESM module here (or choose a file below)…"
+                spellCheck={false}
+                style={{
+                  ...inputStyle,
+                  minHeight: 120,
+                  resize: "vertical",
+                  fontFamily: "var(--font-mono)",
+                  lineHeight: 1.45,
+                  whiteSpace: "pre",
+                  overflowWrap: "normal",
+                }}
+              />
+              <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
+                <input
+                  type="file"
+                  accept=".js,.mjs,.txt,text/javascript,application/javascript"
+                  onChange={(e) => void onFile(e.target.files?.[0])}
+                  style={{ fontSize: 11, color: "var(--text-muted)", maxWidth: "100%" }}
+                />
+              </div>
+              <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+                Stored per-user. Most pasted bundles run in an isolated Dynamic Worker (no network,
+                no secrets). Bundles that need node/shell run in your own sandbox (with your files +
+                network) instead — install shows which, and asks before granting anything.
+              </div>
+            </>
+          )}
 
           {installError && (
             <div style={{ fontSize: 12, color: RED, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
               {installError}
+            </div>
+          )}
+
+          {installing && mode === "source" && (
+            <div style={{ fontSize: 12, color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 8 }}>
+              <Spinner />
+              Resolving &amp; bundling in your sandbox…
             </div>
           )}
 
@@ -498,7 +650,7 @@ function AddBundlePanel({
               disabled={installing}
               style={primaryBtnStyle(installing)}
             >
-              {installing ? "Installing…" : "Install"}
+              {installing ? (mode === "source" ? "Resolving…" : "Installing…") : "Install"}
             </button>
             <button type="button" onClick={onCancel} disabled={installing} style={ghostBtnStyle}>
               Cancel
@@ -676,8 +828,11 @@ export function PluginsConfig({
 
   const setCapability = useCallback(
     async (ext: ExtensionInfo, cap: ExtensionCapability, shouldGrant: boolean) => {
+      // A grant change re-POSTs. Prefer a cached PASTED bundle; else re-resolve
+      // from the stored Source (source installs never return their bundle). Only
+      // an old paste row with neither is unactionable → ask for a re-upload.
       const bundle = bundleCacheRef.current.get(ext.id);
-      if (!bundle) {
+      if (!bundle && !ext.installSource) {
         setActionError(
           `To change capabilities for “${ext.id}”, re-add its bundle via “+ Add extension”. ` +
             `(The stored bundle isn't returned by the API, so a grant needs a re-upload.)`,
@@ -693,13 +848,22 @@ export function PluginsConfig({
         ? Array.from(new Set([...current, cap]))
         : current.filter((c) => c !== cap);
       try {
-        const req: InstallExtensionRequest = {
-          module: bundle,
-          id: ext.id,
-          description: ext.description || undefined,
-          version: ext.version || undefined,
-          capabilities: nextCaps,
-        };
+        const req: InstallExtensionRequest = bundle
+          ? {
+              module: bundle,
+              id: ext.id,
+              description: ext.description || undefined,
+              version: ext.version || undefined,
+              capabilities: nextCaps,
+            }
+          : {
+              // Re-resolve from Source (owner sandbox); id pins the same row.
+              source: ext.installSource,
+              id: ext.id,
+              description: ext.description || undefined,
+              version: ext.version || undefined,
+              capabilities: nextCaps,
+            };
         const res = await apiFetch("/api/plugins", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -728,8 +892,11 @@ export function PluginsConfig({
   );
 
   const onInstalled = useCallback(
-    (id: string, module: string) => {
-      bundleCacheRef.current.set(id, module);
+    (id: string, module: string | null) => {
+      // A pasted bundle is cached so a later row-level re-grant needs no re-upload;
+      // a source install has no client-side bundle (the server resolved it) → the
+      // reloaded row's installSource drives re-grants instead.
+      if (module) bundleCacheRef.current.set(id, module);
       setDirty(true);
       setActionError(null);
       setActionMessage(`Installed ${id}.`);

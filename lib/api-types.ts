@@ -46,6 +46,13 @@ export interface ExtensionInfo {
   declaredCapabilities?: ExtensionCapability[];
   /** Third-party only: the subset of declared capabilities the user has GRANTED. */
   grantedCapabilities?: ExtensionCapability[];
+  /**
+   * Third-party only (E8e-install-ux): the originating Source string
+   * (`npm:…`/`git:…`/path) if the bundle was resolved from one — absent for a
+   * pasted bundle. Lets a row-level capability change re-resolve without a
+   * re-upload.
+   */
+  installSource?: string;
   /** Third-party only, optional: a load/dry-run error if the backend surfaces one on the row (not populated by v1 GET; tolerated if present). */
   loadError?: string;
 }
@@ -80,13 +87,20 @@ export interface ExtensionBundleManifest {
   capabilities?: ExtensionCapability[];
 }
 
-// E8c: POST /api/plugins request body. `id` is REQUIRED by the live route
-// (400 "id is required" otherwise); `module` is the pre-bundled, self-contained
-// workerd-compatible ESM string. `capabilities` is the subset of the declared
-// set the user chooses to grant (must be ⊆ declared or the route 400s).
+// E8c → E8e-install-ux: POST /api/plugins request body. Provide EITHER `module`
+// (the pre-bundled, self-contained ESM primitive — paste/dev) OR `source` (an
+// `npm:<name[@version]>` / `git:<https url>` / path string the owner sandbox
+// resolves + esbuild-bundles, §14.1 — always forced to transport=sandbox). `id`
+// is REQUIRED in paste mode (400 "id is required"); in source mode it MAY be
+// omitted and is derived from the package name. `capabilities` is the subset of
+// the declared set the user chooses to grant (must be ⊆ declared or the route 400s).
 export interface InstallExtensionRequest {
-  module: string;
-  id: string;
+  /** Paste primitive: the pre-bundled, self-contained ESM. Provide this OR `source`. */
+  module?: string;
+  /** E8e-install-ux: `npm:`/`git:`/path Source; resolved + bundled server-side. Provide this OR `module`. */
+  source?: string;
+  /** Required in paste mode; optional (derived from the package name) in source mode. */
+  id?: string;
   description?: string;
   version?: string;
   capabilities?: ExtensionCapability[];
