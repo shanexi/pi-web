@@ -162,3 +162,56 @@ export function isPackageInstallResponse(
 ): r is PackageInstallResponse {
   return Array.isArray((r as PackageInstallResponse).extensions);
 }
+
+// ── E8f: plugin-centric master-detail (aligned with upstream pi-web Plugins) ──
+// GET /api/plugins now returns PluginsListResponse: the legacy `extensions`
+// field stays (built-ins + old UI compat) and gains `packages` / `totals` /
+// `diagnostics` assembled server-side from installed-package records + live
+// extension rows + a best-effort sandbox skills scan.
+
+export type PluginResourceKind = "extension" | "skill" | "prompt" | "theme";
+
+export interface PluginResourceCounts {
+  extensions: number;
+  skills: number;
+  prompts: number;
+  themes: number;
+}
+
+export interface PluginDiagnostic {
+  type: "warning" | "error";
+  message: string;
+  source?: string;
+}
+
+export interface PluginResourceInfo {
+  kind: PluginResourceKind;
+  name: string;                 // ext id / skill name
+  storage: "do" | "sandbox";
+  path?: string;                // skills: /workspace/.pi/skills/<name>[.md]
+  missing?: boolean;            // recorded but gone from the sandbox (after a reset)
+  extension?: ExtensionInfo;    // kind=extension: the full live row (drives toggle/caps/transport)
+}
+
+export interface PluginPackageInfo {
+  key: string;                  // identity: the verbatim source string, or `bundle:<id>`
+  source: string;               // display string: package = source; bundle = ext id
+  installKind: "package" | "bundle" | "legacy";
+  packageName?: string;
+  version?: string;             // actually-installed version
+  configuredVersion?: string;   // version pinned in the source (npm:name@ver → ver; npm only)
+  disabled: boolean;            // has extensions and ALL of them are disabled
+  counts: PluginResourceCounts; // upstream-aligned: enabled ext + recorded, non-missing skills; disabled pkg → all 0
+  resources: PluginResourceInfo[]; // full list (incl. disabled ext, missing skills)
+  status: "loaded" | "installed" | "missing" | "disabled";
+  failures?: Array<{ id: string; error: string }>;
+  installedAt?: number;
+  updatedAt?: number;
+}
+
+export interface PluginsListResponse {
+  extensions: ExtensionInfo[];      // legacy field, unchanged (builtin + thirdparty)
+  packages: PluginPackageInfo[];
+  totals: PluginResourceCounts;     // package resources only (no builtins), upstream-aligned
+  diagnostics: PluginDiagnostic[];
+}
