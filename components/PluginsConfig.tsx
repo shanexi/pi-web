@@ -406,16 +406,21 @@ function ManifestSummary({ manifest }: { manifest: InstallExtensionResponse["man
  * One resolved EXTENSION inside a package detail: mono id + version chip +
  * transport mini-badge + row-level enable toggle, then the trust badge,
  * grantable declared capabilities (existing setCapability re-grant path),
- * manifest summary, and any load error.
+ * manifest summary, and any load error. E8g: when the resource carries a
+ * sandbox path (native npm install) show the dim path line (same idiom as
+ * SkillResourceRow), a small `native` chip next to the sandbox mini-badge,
+ * and the red missing hint after a sandbox reset.
  */
 function ExtensionResourceCard({
   ext,
+  res,
   toggling,
   granting,
   onToggle,
   onGrant,
 }: {
   ext: ExtensionInfo;
+  res?: PluginResourceInfo;
   toggling: Set<string>;
   granting: Set<string>;
   onToggle: (ext: ExtensionInfo) => void;
@@ -427,6 +432,8 @@ function ExtensionResourceCard({
   // two concurrent grants would each compute nextCaps from the same stale
   // snapshot, so the last POST would silently drop the first grant.
   const grantBusy = Array.from(granting).some((k) => k.startsWith(`${ext.id}:`));
+  // E8g: native = installed as real files in the sandbox (npm-install fallback).
+  const isNative = res?.storage === "sandbox" && Boolean(res?.path);
   return (
     <div
       style={{
@@ -467,6 +474,7 @@ function ExtensionResourceCard({
         >
           {ext.transport === "sandbox" ? "sandbox" : "worker"}
         </span>
+        {isNative && <Chip>native</Chip>}
         <span style={{ flex: 1 }} />
         <Toggle
           enabled={ext.enabled}
@@ -474,6 +482,28 @@ function ExtensionResourceCard({
           onToggle={() => onToggle(ext)}
         />
       </div>
+
+      {res?.path && (
+        <div
+          style={{
+            fontSize: 10,
+            color: "var(--text-dim)",
+            fontFamily: "var(--font-mono)",
+            overflow: "hidden",
+            textOverflow: "ellipsis",
+            whiteSpace: "nowrap",
+            marginTop: 1,
+          }}
+          title={res.path}
+        >
+          {res.path}
+        </div>
+      )}
+      {res?.missing && (
+        <div style={{ fontSize: 11, color: "#ef4444", marginTop: 1 }}>
+          Not found — Update reinstalls
+        </div>
+      )}
 
       {ext.description ? (
         <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
@@ -614,6 +644,7 @@ function ResourceList({
                 <ExtensionResourceCard
                   key={`ext:${resource.name}`}
                   ext={resource.extension}
+                  res={resource}
                   toggling={toggling}
                   granting={granting}
                   onToggle={onExtToggle}
@@ -683,14 +714,18 @@ function PackageDetail({
   // No re-resolvable Source for a pasted bundle — Update can't re-POST it.
   const updateDisabled = pkg.installKind === "bundle";
 
-  const storageLines =
-    hasExtensions && hasSkills
-      ? ["extensions → Durable Object (cloud)", `skills → ${SKILLS_ROOT}`]
-      : hasExtensions
-        ? ["Durable Object (cloud)"]
-        : hasSkills
-          ? [SKILLS_ROOT]
-          : ["—"];
+  // E8g: derive storage lines from the resources' actual `storage` field — a
+  // package can hold DO-bundled exts, sandbox-native exts, and skills at once.
+  const hasDoExts = pkg.resources.some((r) => r.kind === "extension" && r.storage === "do");
+  const hasSandboxExts = pkg.resources.some(
+    (r) => r.kind === "extension" && r.storage === "sandbox",
+  );
+  const storageLines = [
+    ...(hasDoExts ? ["extensions → Durable Object (cloud)"] : []),
+    ...(hasSandboxExts ? ["extensions → sandbox (native npm install)"] : []),
+    ...(hasSkills ? [`skills → ${SKILLS_ROOT}`] : []),
+  ];
+  if (storageLines.length === 0) storageLines.push("—");
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 20, maxWidth: 680 }}>

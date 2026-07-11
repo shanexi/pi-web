@@ -134,6 +134,8 @@ export interface PackageInstallExtension {
   manifest: ExtensionBundleManifest;
   declaredCapabilities: ExtensionCapability[];
   grantedCapabilities: ExtensionCapability[];
+  /** E8g: true when the package fell back to a sandbox-native npm install (no bundle; runs from an entry path in the sandbox). */
+  native?: boolean;
 }
 
 export interface PackageInstallResponse {
@@ -188,7 +190,7 @@ export interface PluginResourceInfo {
   kind: PluginResourceKind;
   name: string;                 // ext id / skill name
   storage: "do" | "sandbox";
-  path?: string;                // skills: /workspace/.pi/skills/<name>[.md]
+  path?: string;                // sandbox path: skills → /workspace/.pi/skills/<name>[.md]; native exts → entry path under /ext-host/packages
   missing?: boolean;            // recorded but gone from the sandbox (after a reset)
   extension?: ExtensionInfo;    // kind=extension: the full live row (drives toggle/caps/transport)
 }
