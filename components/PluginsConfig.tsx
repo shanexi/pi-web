@@ -11,7 +11,10 @@ import type {
   ExtensionsResponse,
   InstallExtensionRequest,
   InstallExtensionResponse,
+  PackageInstallExtension,
+  PackageInstallResponse,
 } from "@/lib/api-types";
+import { isPackageInstallResponse } from "@/lib/api-types";
 
 /**
  * E7 → E8c: Plugins panel.
@@ -308,21 +311,25 @@ function CapabilityBadge({
 /**
  * The "+ Add extension" body. Two modes (upstream pi.dev/packages parity):
  *  - "From source" (default): type an `npm:`/`git:`/path Source string — the
- *    owner sandbox resolves + esbuild-bundles it (§14.1). Always sandbox
- *    transport. `id` is optional (derived from the package name).
+ *    owner sandbox resolves it as a full pi PACKAGE (E8e-PACKAGE, §14): ALL its
+ *    EXTENSIONS + SKILLS install in one go (prompts DEFERRED → 0; themes N/A on
+ *    headless pi-cf). Always sandbox transport. `id` is optional (derived from
+ *    the package name). On 200 shows the upstream-style counts line + each
+ *    installed extension row (transport badge + grantable capabilities) + a note
+ *    that skills appear in the Skills panel after /reload.
  *  - "Paste bundle" (the primitive): paste (or file-fill) a pre-bundled ESM
- *    module — DW-first, sandbox-fallback. `id` required.
- * On 200 either mode shows the server-derived manifest + the declared
- * capabilities to grant. Self-contained: it owns the install/grant POSTs and
- * reports every successful write up to the parent via onChanged (id + module|null
- * + result), so the parent can cache a pasted bundle, reload the list, mark dirty.
+ *    module — DW-first, sandbox-fallback. `id` required. On 200 shows the
+ *    server-derived manifest + the declared capabilities to grant.
+ * Self-contained: it owns the install/grant POSTs and reports every successful
+ * write up to the parent via onChanged (the installed ids + their bundle|null),
+ * so the parent can cache a pasted bundle, reload the list, mark dirty.
  */
 function AddBundlePanel({
   onCancel,
   onChanged,
 }: {
   onCancel: () => void;
-  onChanged: (id: string, module: string | null, result: InstallExtensionResponse) => void;
+  onChanged: (installed: Array<{ id: string; module: string | null }>) => void;
 }) {
   const [mode, setMode] = useState<"source" | "paste">("source");
   const [source, setSource] = useState("");
@@ -332,21 +339,26 @@ function AddBundlePanel({
   const [version, setVersion] = useState("");
   const [installing, setInstalling] = useState(false);
   const [installError, setInstallError] = useState<string | null>(null);
-  const [result, setResult] = useState<InstallExtensionResponse | null>(null);
+  const [result, setResult] = useState<InstallExtensionResponse | PackageInstallResponse | null>(null);
 
   const post = useCallback(
-    async (capabilities: ExtensionCapability[]): Promise<InstallExtensionResponse | null> => {
+    async (
+      capabilities: ExtensionCapability[],
+      // A source per-extension re-grant pins ONE extension id (the whole package
+      // re-resolves, but only this extension takes the new grant server-side).
+      targetId?: string,
+    ): Promise<InstallExtensionResponse | PackageInstallResponse | null> => {
       setInstalling(true);
       setInstallError(null);
       try {
         const trimmedId = id.trim();
-        // Source mode POSTs {source, id?} (id derived server-side when omitted);
-        // paste mode POSTs {module, id}. Never both — `source` OR `module`.
+        // Source mode POSTs {source, id?} (id derived server-side when omitted;
+        // a re-grant pins targetId); paste mode POSTs {module, id}. Never both.
         const req: InstallExtensionRequest =
           mode === "source"
             ? {
                 source: source.trim(),
-                id: trimmedId || undefined,
+                id: targetId ?? (trimmedId || undefined),
                 description: description.trim() || undefined,
                 version: version.trim() || undefined,
                 capabilities,
@@ -363,15 +375,18 @@ function AddBundlePanel({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(req),
         });
-        const d = (await res.json()) as InstallExtensionResponse & { error?: string };
+        const d = (await res.json()) as (InstallExtensionResponse | PackageInstallResponse) & { error?: string };
         // Server error body is always { error: string } (400 parse/resolve/factory
         // original text / 409 built-in collision / 413 caps). Surface it verbatim.
         if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
         setResult(d);
         // The server owns a source bundle (never returned) → cache null; a pasted
-        // bundle is cached so a later row-level re-grant needs no re-upload. `d.id`
-        // is authoritative (a source install may have derived it).
-        onChanged(d.id, mode === "source" ? null : module, d);
+        // bundle is cached so a later row-level re-grant needs no re-upload.
+        if (isPackageInstallResponse(d)) {
+          onChanged(d.extensions.map((e) => ({ id: e.id, module: null })));
+        } else {
+          onChanged([{ id: d.id, module }]);
+        }
         return d;
       } catch (err) {
         setInstallError(errText(err));
@@ -425,9 +440,10 @@ function AddBundlePanel({
     [id],
   );
 
+  // Paste result: toggle a capability on the single installed extension.
   const toggleGrant = useCallback(
     (cap: ExtensionCapability, shouldGrant: boolean) => {
-      if (!result) return;
+      if (!result || isPackageInstallResponse(result)) return;
       const current = result.grantedCapabilities ?? [];
       const next = shouldGrant
         ? Array.from(new Set([...current, cap]))
@@ -435,6 +451,20 @@ function AddBundlePanel({
       void post(next);
     },
     [result, post],
+  );
+
+  // Package result: toggle a capability on ONE installed extension. The whole
+  // Source re-resolves, but only `ext.id` takes the new grant server-side (its
+  // siblings keep theirs); we pin it via targetId.
+  const toggleExtGrant = useCallback(
+    (ext: PackageInstallExtension, cap: ExtensionCapability, shouldGrant: boolean) => {
+      const current = ext.grantedCapabilities ?? [];
+      const next = shouldGrant
+        ? Array.from(new Set([...current, cap]))
+        : current.filter((c) => c !== cap);
+      void post(next, ext.id);
+    },
+    [post],
   );
 
   const inputStyle: React.CSSProperties = {
@@ -460,8 +490,17 @@ function AddBundlePanel({
         background: "var(--bg-panel)",
       }}
     >
-      {result ? (
-        // ── Install result: server-derived manifest + declared caps to grant ──
+      {result && isPackageInstallResponse(result) ? (
+        // ── Source PACKAGE result: counts line + each installed extension row ──
+        <PackageResultView
+          result={result}
+          installing={installing}
+          installError={installError}
+          onToggleGrant={toggleExtGrant}
+          onDone={onCancel}
+        />
+      ) : result ? (
+        // ── Paste result: server-derived manifest + declared caps to grant ──
         <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ fontSize: 13, fontWeight: 600, color: GREEN }}>
             Installed{" "}
@@ -700,6 +739,136 @@ function ManifestSummary({ manifest }: { manifest: InstallExtensionResponse["man
   );
 }
 
+/**
+ * The Source PACKAGE install result (E8e-PACKAGE): an upstream-style per-type
+ * counts line ("N ext · M skills · 0 prompts · — themes (N/A on headless)"),
+ * then each installed extension as a row (transport badge + server-derived
+ * manifest + grantable declared capabilities), any per-extension failures, and a
+ * note that skills land in the Skills panel after a /reload. All package-supplied
+ * text (ids, names, error text) is rendered as escaped JSX.
+ */
+function PackageResultView({
+  result,
+  installing,
+  installError,
+  onToggleGrant,
+  onDone,
+}: {
+  result: PackageInstallResponse;
+  installing: boolean;
+  installError: string | null;
+  onToggleGrant: (ext: PackageInstallExtension, cap: ExtensionCapability, shouldGrant: boolean) => void;
+  onDone: () => void;
+}) {
+  const extCount = result.extensions.length;
+  const skillCount = result.installedSkills.count;
+  const countsLine = `${extCount} ext · ${skillCount} skills · ${result.promptsCount} prompts · — themes (N/A on headless)`;
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ fontSize: 13, fontWeight: 600, color: GREEN }}>
+        Installed{" "}
+        <span style={{ fontFamily: "var(--font-mono)", color: "var(--text)" }}>
+          {result.packageName ?? result.source}
+        </span>
+      </div>
+
+      {/* Upstream-style per-type counts line. */}
+      <div style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "var(--font-mono)" }}>
+        {countsLine}
+      </div>
+
+      {/* Each installed extension: badge + manifest + grantable capabilities. */}
+      {extCount === 0 ? (
+        <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
+          No extensions in this package — skills only.
+        </div>
+      ) : (
+        result.extensions.map((ext) => {
+          const declared = ext.declaredCapabilities ?? [];
+          const granted = ext.grantedCapabilities ?? [];
+          return (
+            <div
+              key={ext.id}
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: 6,
+                padding: "10px 12px",
+                border: "1px solid var(--border)",
+                borderRadius: 6,
+                background: "var(--bg)",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <span
+                  style={{ fontSize: 12, fontWeight: 600, color: "var(--text)", fontFamily: "var(--font-mono)", wordBreak: "break-all" }}
+                >
+                  {ext.id}
+                </span>
+                {ext.version ? <Chip>v{ext.version}</Chip> : null}
+              </div>
+              <ManifestSummary manifest={ext.manifest} />
+              <TransportBadge transport={ext.transport} />
+              {declared.length === 0 ? (
+                <div style={{ fontSize: 11, color: "var(--text-muted)" }}>
+                  {ext.transport === "sandbox"
+                    ? "No capabilities declared — but a sandbox extension still runs with full access to your sandbox (above)."
+                    : "No capabilities declared — runs fully isolated."}
+                </div>
+              ) : (
+                <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+                  {declared.map((cap) => (
+                    <CapabilityBadge
+                      key={`${ext.id}-${cap}`}
+                      cap={cap}
+                      granted={granted.includes(cap)}
+                      busy={installing}
+                      onToggle={(shouldGrant) => onToggleGrant(ext, cap, shouldGrant)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })
+      )}
+
+      {/* Per-extension failures (a bad extension fails only itself). */}
+      {result.failures && result.failures.length > 0 && (
+        <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          <div style={{ fontSize: 11, color: "var(--text-dim)" }}>Extensions that failed to install</div>
+          {result.failures.map((f) => (
+            <div key={f.id} style={{ fontSize: 12, color: RED, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+              <span style={{ fontFamily: "var(--font-mono)" }}>{f.id}</span>: {f.error}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Skills note — they land in the Skills panel after a /reload. */}
+      {skillCount > 0 && (
+        <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
+          {skillCount} skill{skillCount === 1 ? "" : "s"} installed
+          {result.installedSkills.names.length > 0 ? ` (${result.installedSkills.names.join(", ")})` : ""} — they appear in
+          the Skills panel after you /reload the session.
+        </div>
+      )}
+
+      {installError && (
+        <div style={{ fontSize: 12, color: RED, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
+          {installError}
+        </div>
+      )}
+
+      <div style={{ display: "flex", gap: 8 }}>
+        <button type="button" onClick={onDone} style={primaryBtnStyle(false)}>
+          Done
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function primaryBtnStyle(busy: boolean): React.CSSProperties {
   return {
     padding: "6px 14px",
@@ -869,9 +1038,15 @@ export function PluginsConfig({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(req),
         });
-        const d = (await res.json()) as InstallExtensionResponse & { error?: string };
+        const d = (await res.json()) as (InstallExtensionResponse | PackageInstallResponse) & { error?: string };
         if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
-        patchExtension(ext.id, { grantedCapabilities: d.grantedCapabilities ?? nextCaps });
+        // A cached PASTE re-POST returns the single-extension shape; a SOURCE
+        // re-resolve returns the PACKAGE shape (re-resolves the whole package, but
+        // only this id took the new grant) — read the matching extension's grant.
+        const grantedFromResp = isPackageInstallResponse(d)
+          ? d.extensions.find((e) => e.id === ext.id)?.grantedCapabilities ?? nextCaps
+          : d.grantedCapabilities ?? nextCaps;
+        patchExtension(ext.id, { grantedCapabilities: grantedFromResp });
         setDirty(true);
         setActionMessage(
           shouldGrant
@@ -892,14 +1067,16 @@ export function PluginsConfig({
   );
 
   const onInstalled = useCallback(
-    (id: string, module: string | null) => {
+    (installed: Array<{ id: string; module: string | null }>) => {
       // A pasted bundle is cached so a later row-level re-grant needs no re-upload;
       // a source install has no client-side bundle (the server resolved it) → the
-      // reloaded row's installSource drives re-grants instead.
-      if (module) bundleCacheRef.current.set(id, module);
+      // reloaded row's installSource drives re-grants instead. A PACKAGE install
+      // reports every extension it created.
+      for (const { id, module } of installed) if (module) bundleCacheRef.current.set(id, module);
       setDirty(true);
       setActionError(null);
-      setActionMessage(`Installed ${id}.`);
+      const ids = installed.map((x) => x.id);
+      if (ids.length > 0) setActionMessage(`Installed ${ids.join(", ")}.`);
       void load();
     },
     [load],
