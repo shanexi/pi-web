@@ -106,8 +106,9 @@ export interface InstallExtensionRequest {
   capabilities?: ExtensionCapability[];
 }
 
-// E8c: POST /api/plugins 200 response — success + the id, the server-derived
-// manifest, and the declared/granted capability split (all authoritative).
+// E8c: POST /api/plugins 200 response for a PASTE (`module`) install — success +
+// the id, the server-derived manifest, and the declared/granted capability split
+// (all authoritative). A SOURCE (`source`) install returns PackageInstallResponse.
 export interface InstallExtensionResponse {
   success: true;
   id: string;
@@ -116,4 +117,48 @@ export interface InstallExtensionResponse {
   manifest: ExtensionBundleManifest;
   declaredCapabilities: ExtensionCapability[];
   grantedCapabilities: ExtensionCapability[];
+}
+
+// E8e-PACKAGE (§14 + packages.md): POST /api/plugins {source} 200 response. ONE
+// Source resolves a full pi PACKAGE → ALL its EXTENSIONS + SKILLS installed in
+// one go (v1 scope; prompts DEFERRED → count 0; themes N/A on headless pi-cf —
+// pi themes are TUI terminal color schemes, they don't map to the React UI). A
+// bad extension fails only ITSELF (surfaced in `failures`); the good ones + the
+// skills still install (partial-success). Paste installs keep the single-result
+// InstallExtensionResponse shape above.
+export interface PackageInstallExtension {
+  id: string;
+  /** Source packages always run in the owner sandbox (external pi pkgs + node). */
+  transport: "dw" | "sandbox";
+  version?: string;
+  manifest: ExtensionBundleManifest;
+  declaredCapabilities: ExtensionCapability[];
+  grantedCapabilities: ExtensionCapability[];
+}
+
+export interface PackageInstallResponse {
+  success: true;
+  /** The originating Source string (`npm:`/`git:`/path) echoed back. */
+  source: string;
+  /** The resolved package name (when the manifest declared one). */
+  packageName?: string;
+  /** The resolved package version (shared by every extension). */
+  version?: string;
+  /** Every extension that installed successfully. */
+  extensions: PackageInstallExtension[];
+  /** Per-extension failures (a bad extension fails only itself; absent when none). */
+  failures?: Array<{ id: string; error: string }>;
+  /** Skills copied into /workspace/.pi/skills — they appear in the Skills panel after a /reload. */
+  installedSkills: { count: number; names: string[] };
+  /** v1: prompt templates are DEFERRED — always 0. */
+  promptsCount: 0;
+  /** Headless pi-cf has no pi TUI, so themes never apply — always false. */
+  themesApplicable: false;
+}
+
+/** True when a POST /api/plugins response is a Source PACKAGE result (vs a single paste result). */
+export function isPackageInstallResponse(
+  r: InstallExtensionResponse | PackageInstallResponse,
+): r is PackageInstallResponse {
+  return Array.isArray((r as PackageInstallResponse).extensions);
 }
