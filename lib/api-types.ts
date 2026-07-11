@@ -4,13 +4,13 @@ export interface SkillSearchResult {
   url: string;
 }
 
-// E8c: the four install-time grantable capabilities (backend `DwCapability`,
-// §7). In v1 ONLY `modelSteering` is ever statically derivable from a
-// factory-only dry-run (an extension subscribing before_agent_start/input),
-// so it is the only value the API ever puts in `declaredCapabilities`. The UI
+// E8c/E8e: the install-time grantable capabilities (backend `DwCapability`,
+// §7). `modelSteering` is derivable from before_agent_start/input; E8e-s3 adds
+// `exec` (the sandbox-only pi.exec capability, DECLARED via the bundle's
+// `export const capabilities` — declaring it forces transport=sandbox). The UI
 // still renders whatever the API declares — it does NOT hardcode this set —
 // so this union is a type aid, not a grid the panel iterates.
-export type ExtensionCapability = "promptDrive" | "modelSteering" | "toolInput" | "transcript";
+export type ExtensionCapability = "promptDrive" | "modelSteering" | "toolInput" | "transcript" | "exec";
 
 // E7 → E8c: the GET /api/plugins row. E7's {id, description, enabled} stay for
 // backward compat and are all a BUILT-IN row ever carries; the E8c fields are
@@ -23,8 +23,19 @@ export interface ExtensionInfo {
   description: string;
   /** Whether the current user has this extension enabled (default true). */
   enabled: boolean;
-  /** "builtin" (compile-time, audited) vs "thirdparty" (user-uploaded, DW-isolated). Absent → treat as "builtin". */
+  /** "builtin" (compile-time, audited) vs "thirdparty" (user-uploaded). Absent → treat as "builtin". */
   source?: "builtin" | "thirdparty";
+  /**
+   * Third-party only: where the bundle RUNS, chosen at install (E8e).
+   *  - "dw": an isolated per-owner Dynamic Worker — no network, no secrets;
+   *    capability grants are ENFORCED (the bridge is a real isolation boundary).
+   *  - "sandbox": the owner's OWN E2B sandbox (node) — has your files, network,
+   *    and shell. Runs only when the bundle needs node/exec. NOT intra-sandbox
+   *    isolated: capability grants here are a CONSENT/declaration signal for
+   *    well-behaved extensions, not an isolation boundary. Install only code you
+   *    trust. Absent/legacy → "dw".
+   */
+  transport?: "dw" | "sandbox";
   /** Third-party only: author-supplied version string (may be absent). */
   version?: string;
   /** Third-party only: the tool names the bundle registers (dry-run derived). */
@@ -86,6 +97,8 @@ export interface InstallExtensionRequest {
 export interface InstallExtensionResponse {
   success: true;
   id: string;
+  /** Where the install-time dry-run chose to run it (see ExtensionInfo.transport). */
+  transport: "dw" | "sandbox";
   manifest: ExtensionBundleManifest;
   declaredCapabilities: ExtensionCapability[];
   grantedCapabilities: ExtensionCapability[];

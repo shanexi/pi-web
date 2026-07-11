@@ -43,17 +43,62 @@ const GREEN = "#4ade80";
  * Plain-words gloss for a granted capability — "what power does this give the
  * extension over your session". Unknown capabilities fall through to the raw
  * id so the UI stays data-driven (it renders whatever the API declares; it does
- * NOT iterate a hardcoded grid). v1 only ever surfaces `modelSteering`.
+ * NOT iterate a hardcoded grid). The API surfaces `modelSteering` (steering
+ * events) and, for sandbox-transport extensions, `exec` (E8e-s3 pi.exec).
  */
 const CAPABILITY_PLAIN: Record<string, string> = {
   modelSteering: "change system prompt / inject messages",
   promptDrive: "act as you (drive the agent)",
   toolInput: "rewrite tool inputs",
   transcript: "read your full transcript",
+  exec: "run shell commands in your sandbox (which has your files + network)",
 };
 
 function capabilityPlain(cap: string): string {
   return CAPABILITY_PLAIN[cap] ?? cap;
+}
+
+/**
+ * The honest trust framing for where a third-party extension RUNS. `dw` is a
+ * real isolation boundary (no network/secrets, capabilities enforced); `sandbox`
+ * is the owner's own domain (files + network + shell) and is NOT intra-sandbox
+ * isolated — capability grants there are consent, not enforcement, so install
+ * only code you trust. This is why we never show a blanket "isolated" claim.
+ */
+function transportTrust(transport?: "dw" | "sandbox"): { label: string; note: string; warn: boolean } {
+  if (transport === "sandbox") {
+    return {
+      label: "Runs in your sandbox",
+      note: "Full access to your workspace files, network, and shell — install only code you trust. Capability grants below are a consent signal, not a hard sandbox.",
+      warn: true,
+    };
+  }
+  return {
+    label: "Isolated Dynamic Worker",
+    note: "No network, no secrets; capability grants are enforced by the isolation boundary.",
+    warn: false,
+  };
+}
+
+function TransportBadge({ transport }: { transport?: "dw" | "sandbox" }) {
+  const t = transportTrust(transport);
+  return (
+    <div
+      style={{
+        fontSize: 11,
+        lineHeight: 1.5,
+        padding: "6px 8px",
+        borderRadius: 6,
+        border: `1px solid ${t.warn ? RED : "var(--border)"}`,
+        background: t.warn ? "rgba(248,113,113,0.08)" : "var(--bg)",
+        color: "var(--text-muted)",
+      }}
+    >
+      <span style={{ fontWeight: 700, color: t.warn ? RED : "var(--text)" }}>{t.label}</span>
+      {" — "}
+      {t.note}
+    </div>
+  );
 }
 
 function errText(err: unknown): string {
@@ -341,13 +386,17 @@ function AddBundlePanel({
 
           <ManifestSummary manifest={result.manifest} />
 
+          <TransportBadge transport={result.transport} />
+
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ fontSize: 11, color: "var(--text-dim)" }}>
               Capabilities this extension declared
             </div>
             {(result.declaredCapabilities ?? []).length === 0 ? (
               <div style={{ fontSize: 12, color: "var(--text-muted)" }}>
-                None — it runs fully sandboxed (no ability to steer the agent).
+                {result.transport === "sandbox"
+                  ? "None declared — but a sandbox extension still runs with full access to your sandbox (above)."
+                  : "None — it runs fully isolated with no ability to steer the agent."}
               </div>
             ) : (
               <>
@@ -431,7 +480,9 @@ function AddBundlePanel({
             />
           </div>
           <div style={{ fontSize: 11, color: "var(--text-dim)", lineHeight: 1.5 }}>
-            Stored per-user; runs isolated in a Dynamic Worker — no network, no secrets.
+            Stored per-user. Most extensions run in an isolated Dynamic Worker (no network, no
+            secrets). Extensions that need node/shell run in your own sandbox (with your files +
+            network) instead — install shows which, and asks before granting anything.
           </div>
 
           {installError && (
@@ -799,12 +850,29 @@ export function PluginsConfig({
               {ext.id}
             </span>
             {ext.version ? <Chip>v{ext.version}</Chip> : null}
+            <span
+              style={{
+                fontSize: 10,
+                fontWeight: 700,
+                letterSpacing: 0.4,
+                textTransform: "uppercase",
+                padding: "1px 6px",
+                borderRadius: 5,
+                border: `1px solid ${ext.transport === "sandbox" ? RED : "var(--border)"}`,
+                color: ext.transport === "sandbox" ? RED : "var(--text-dim)",
+              }}
+              title={transportTrust(ext.transport).note}
+            >
+              {ext.transport === "sandbox" ? "sandbox" : "worker"}
+            </span>
           </div>
           {ext.description ? (
             <div style={{ fontSize: 12, color: "var(--text-muted)", lineHeight: 1.5 }}>
               {ext.description}
             </div>
           ) : null}
+
+          {ext.transport === "sandbox" && <TransportBadge transport="sandbox" />}
 
           {hasError && (
             <div style={{ fontSize: 12, color: RED, whiteSpace: "pre-wrap", wordBreak: "break-word" }}>
@@ -824,7 +892,7 @@ export function PluginsConfig({
           )}
 
           {/* Capability badges — data-driven: exactly what the API DECLARED
-              (v1: [] or ["modelSteering"]); never a hardcoded grid. */}
+              (e.g. [], ["modelSteering"], or ["exec"]); never a hardcoded grid. */}
           {declared.length > 0 && (
             <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
               {declared.map((cap) => (
