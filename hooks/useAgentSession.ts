@@ -916,11 +916,20 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       }
       case "message_end": {
+        const completed = event.message as AgentMessage | undefined;
+        // Out-of-turn custom messages (e.g. a background subagent's completion
+        // notification, injected server-side via sendCustomMessage while the
+        // agent is idle) must always render. The late-event guard below is only
+        // meant to drop normal turn messages replayed after a run finished — a
+        // custom display entry is never a duplicate of a reconciled turn.
+        if (completed?.role === "custom") {
+          setMessages((prev) => [...prev, normalizeToolCalls(completed)]);
+          break;
+        }
         // Same late-event guard: after reconcile finished this run,
         // loadSession already loaded this message from the session file —
         // appending it again would duplicate it.
         if (!agentRunningRef.current) break;
-        const completed = event.message as AgentMessage | undefined;
         if (completed && completed.role === "user") {
           // Delivered steering/follow-up messages surface here as user
           // messages. The run's initial prompt also emits one, but handleSend
