@@ -11,6 +11,7 @@ import { ModelsConfig } from "./ModelsConfig";
 import { SkillsConfig } from "./SkillsConfig";
 import { PluginsConfig } from "./PluginsConfig";
 import { BranchNavigator } from "./BranchNavigator";
+import { SandboxStatusChip } from "./SandboxStatusChip";
 import { useTheme } from "@/hooks/useTheme";
 import { useIsMobile } from "@/hooks/useIsMobile";
 import { copyText } from "@/lib/clipboard";
@@ -664,6 +665,15 @@ export function AppShell() {
                 </svg>
               </button>
             </div>
+          )}
+          {/* Per-owner E2B sandbox status. Lives here (top-left, with the account
+              identity) not in the sidebar: the sandbox is account-scoped and
+              always present, so its status must survive sidebar collapse and show
+              even on the no-session welcome screen (unlike the showChat group). */}
+          {authUser && (
+            <SandboxStatusChip
+              style={{ height: "100%", padding: "0 12px", borderRight: "1px solid var(--border)", flexShrink: 0 }}
+            />
           )}
           {showChat && (
             <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
