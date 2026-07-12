@@ -54,7 +54,14 @@ const CAPABILITY_PLAIN: Record<string, string> = {
   toolInput: "rewrite tool inputs",
   transcript: "read your full transcript",
   exec: "run shell commands in your sandbox (which has your files + network)",
+  inference: "call models on your behalf (via the broker, on your account)",
 };
+
+// Consent capabilities: on the SANDBOX transport, `transcript`/`inference` are a
+// consent signal (not a hard gate — the code already has full sandbox access), so
+// the user may grant them even when the package never self-declared them. Offered
+// only for sandbox extensions; DW extensions expose only their declared caps.
+const SANDBOX_CONSENT_CAPS: ExtensionCapability[] = ["transcript", "inference"];
 
 function capabilityPlain(cap: string): string {
   return CAPABILITY_PLAIN[cap] ?? cap;
@@ -428,6 +435,11 @@ function ExtensionResourceCard({
 }) {
   const declared = ext.declaredCapabilities ?? [];
   const granted = ext.grantedCapabilities ?? [];
+  // Grantable = declared ∪ (sandbox consent caps for a sandbox extension). This
+  // is what lets you grant `transcript`/`inference` to a package that declared
+  // nothing (e.g. rpiv-todo, pi-subagents) — the backend re-validates the same set.
+  const grantable: ExtensionCapability[] =
+    ext.transport === "sandbox" ? Array.from(new Set([...declared, ...SANDBOX_CONSENT_CAPS])) : declared;
   // While ANY grant for this extension is in flight, EVERY badge is disabled:
   // two concurrent grants would each compute nextCaps from the same stale
   // snapshot, so the last POST would silently drop the first grant.
@@ -513,10 +525,11 @@ function ExtensionResourceCard({
 
       <TransportBadge transport={ext.transport} />
 
-      {/* Capability badges — data-driven: exactly what the API DECLARED. */}
-      {declared.length > 0 && (
+      {/* Capability badges — declared caps plus, for a sandbox extension, the
+          consent caps (transcript/inference) the user can grant by choice. */}
+      {grantable.length > 0 && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
-          {declared.map((cap) => (
+          {grantable.map((cap) => (
             <CapabilityBadge
               key={`${ext.id}-cap-${cap}`}
               cap={cap}
@@ -1455,19 +1468,11 @@ function PluginsConfigMasterDetail({
 
   const setCapability = useCallback(
     async (ext: ExtensionInfo, cap: ExtensionCapability, shouldGrant: boolean) => {
-      // A grant change re-POSTs. A source-installed row ALWAYS re-resolves from
-      // its stored Source — a cached paste with a colliding id would re-POST a
-      // STALE module (and server-side clear the row's source, detaching it from
-      // its package). Only rows WITHOUT a Source use the cached PASTED bundle;
-      // an old paste row with neither is unactionable → ask for a re-upload.
-      const bundle = ext.installSource ? undefined : bundleCacheRef.current.get(ext.id);
-      if (!bundle && !ext.installSource) {
-        setActionError(
-          `To change capabilities for “${ext.id}”, re-add its bundle via “Add plugin”. ` +
-            `(The stored bundle isn't returned by the API, so a grant needs a re-upload.)`,
-        );
-        return;
-      }
+      // PATCH updates the granted caps IN PLACE — no re-install, no stored bundle
+      // / source needed (that was the old "re-add its bundle" limitation). Works
+      // for any installed third-party extension. Takes effect on the extension's
+      // next runtime build (a new session, or a /reload of the current one). The
+      // backend re-validates grantable = declared ∪ sandbox consent caps.
       const gkey = `${ext.id}:${cap}`;
       setGranting((s) => new Set(s).add(gkey));
       setActionError(null);
@@ -1477,37 +1482,18 @@ function PluginsConfigMasterDetail({
         ? Array.from(new Set([...current, cap]))
         : current.filter((c) => c !== cap);
       try {
-        const req: InstallExtensionRequest = bundle
-          ? {
-              module: bundle,
-              id: ext.id,
-              description: ext.description || undefined,
-              version: ext.version || undefined,
-              capabilities: nextCaps,
-            }
-          : {
-              // Re-resolve from Source (owner sandbox); id pins the same row.
-              source: ext.installSource,
-              id: ext.id,
-              description: ext.description || undefined,
-              version: ext.version || undefined,
-              capabilities: nextCaps,
-            };
         const res = await apiFetch("/api/plugins", {
-          method: "POST",
+          method: "PATCH",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(req),
+          body: JSON.stringify({ id: ext.id, capabilities: nextCaps }),
         });
-        const d = (await res.json()) as (InstallExtensionResponse | PackageInstallResponse) & {
-          error?: string;
-        };
+        const d = (await res.json()) as { success?: boolean; error?: string };
         if (!res.ok || d.error) throw new Error(d.error ?? `HTTP ${res.status}`);
-        pruneBundleCache(d);
         setDirty(true);
         await load();
         setActionMessage(
           shouldGrant
-            ? `Granted “${capabilityPlain(cap)}” to ${ext.id}.`
+            ? `Granted “${capabilityPlain(cap)}” to ${ext.id}. Takes effect in a new session (or /reload).`
             : `Revoked “${capabilityPlain(cap)}” from ${ext.id}.`,
         );
       } catch (err) {
@@ -1520,7 +1506,7 @@ function PluginsConfigMasterDetail({
         });
       }
     },
-    [load, pruneBundleCache],
+    [load],
   );
 
   const installFromSource = useCallback(async () => {
