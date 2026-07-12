@@ -447,7 +447,12 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       if (sessionIdRef.current !== sid) return null;
       setData(d);
       setActiveLeafId(d.leafId);
-      setMessages(d.context.messages);
+      // Normalize tool-call blocks on load, mirroring the streaming path
+      // (message_update/message_end): the pi session format stores tool calls
+      // with `name` (not `toolName`), so un-normalized blocks render with an
+      // undefined toolName and crash isEditToolName. Nested subagent transcripts
+      // surface many such blocks at once.
+      setMessages(d.context.messages.map(normalizeToolCalls));
       setEntryIds(d.context.entryIds ?? []);
       setCurrentModelOverride(null);
       setError(null);
@@ -496,7 +501,7 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       const res = await apiFetch(`/api/sessions/${encodeURIComponent(sid)}/context?${params}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const d = await res.json() as { context: { messages: AgentMessage[]; entryIds: string[] } };
-      setMessages(d.context.messages);
+      setMessages(d.context.messages.map(normalizeToolCalls));
       setEntryIds(d.context.entryIds ?? []);
     } catch (e) {
       console.error("Failed to load context:", e);

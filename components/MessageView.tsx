@@ -1000,7 +1000,8 @@ function getResultDiff(result: ToolResultMessage): ResultDiff | null {
   return null;
 }
 
-function isEditToolName(toolName: string): boolean {
+function isEditToolName(toolName: string | undefined): boolean {
+  if (typeof toolName !== "string") return false;
   const name = toolName.toLowerCase();
   return name === "edit" ||
     name.startsWith("edit_") ||
