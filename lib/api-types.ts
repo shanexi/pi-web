@@ -10,7 +10,7 @@ export interface SkillSearchResult {
 // `export const capabilities` — declaring it forces transport=sandbox). The UI
 // still renders whatever the API declares — it does NOT hardcode this set —
 // so this union is a type aid, not a grid the panel iterates.
-export type ExtensionCapability = "promptDrive" | "modelSteering" | "toolInput" | "transcript" | "exec";
+export type ExtensionCapability = "promptDrive" | "modelSteering" | "toolInput" | "transcript" | "exec" | "inference";
 
 // E7 → E8c: the GET /api/plugins row. E7's {id, description, enabled} stay for
 // backward compat and are all a BUILT-IN row ever carries; the E8c fields are
