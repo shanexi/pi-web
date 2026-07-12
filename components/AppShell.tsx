@@ -671,9 +671,7 @@ export function AppShell() {
               always present, so its status must survive sidebar collapse and show
               even on the no-session welcome screen (unlike the showChat group). */}
           {authUser && (
-            <SandboxStatusChip
-              style={{ height: "100%", padding: "0 12px", borderRight: "1px solid var(--border)", flexShrink: 0 }}
-            />
+            <SandboxStatusChip style={{ height: "100%", borderRight: "1px solid var(--border)", flexShrink: 0 }} />
           )}
           {showChat && (
             <div style={{ display: "flex", alignItems: "stretch", height: "100%" }}>
