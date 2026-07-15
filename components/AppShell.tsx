@@ -298,6 +298,23 @@ export function AppShell() {
     router.replace(`?session=${encodeURIComponent(newSessionId)}`, { scroll: false });
   }, [router, hydrateSelectedSession]);
 
+  // E11-6a: open an arbitrary session by id (a background sub-agent deep-link
+  // from the conversation view). Same open-by-id shape as handleSessionForked:
+  // set a minimal SessionInfo, hydrate its real metadata from the list, switch.
+  const handleOpenSessionById = useCallback((sessionId: string) => {
+    setNewSessionCwd(null);
+    setSystemPrompt(null);
+    setSelectedSession((prev) =>
+      prev && prev.id === sessionId
+        ? prev
+        : { path: "", id: sessionId, cwd: "", created: "", modified: "", messageCount: 0, firstMessage: "" },
+    );
+    setSessionKey((k) => k + 1);
+    hydrateSelectedSession(sessionId);
+    if (isMobile) setSidebarOpen(false);
+    router.replace(`?session=${encodeURIComponent(sessionId)}`, { scroll: false });
+  }, [router, hydrateSelectedSession, isMobile]);
+
   const handleInitialRestoreDone = useCallback(() => {
     setInitialSessionRestored(true);
   }, []);
@@ -1087,6 +1104,7 @@ export function AppShell() {
               onSessionStatsPanelOpen={openSessionStatsPanel}
               onContextUsageChange={handleContextUsageChange}
               onOpenFile={handleOpenLinkedFile}
+              onOpenSession={handleOpenSessionById}
             />
           ) : showPlaceholder ? (
             activeCwd ? (

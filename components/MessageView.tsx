@@ -58,6 +58,8 @@ interface Props {
   modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
+  /** E11-6a: open a session by id (background sub-agent deep-link). */
+  onOpenSession?: (sessionId: string) => void;
   entryId?: string;
   onFork?: (entryId: string) => void;
   forking?: boolean;
@@ -96,12 +98,12 @@ function haveSameRelevantToolResults(
   return true;
 }
 
-export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId }: Props) {
+export const MessageView = memo(function MessageView({ message, isStreaming, toolResults, modelNames, cwd, onOpenFile, onOpenSession, entryId, onFork, forking, onNavigate, prevAssistantEntryId, onEditContent, showTimestamp, prevTimestamp, sessionId }: Props) {
   if (message.role === "user") {
     return <UserMessageView message={message as UserMessage} cwd={cwd} onOpenFile={onOpenFile} entryId={entryId} onFork={onFork} forking={forking} onNavigate={onNavigate} prevAssistantEntryId={prevAssistantEntryId} onEditContent={onEditContent} />;
   }
   if (message.role === "assistant") {
-    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} />;
+    return <AssistantMessageView message={message as AssistantMessage} isStreaming={isStreaming} toolResults={toolResults} modelNames={modelNames} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} showTimestamp={showTimestamp} prevTimestamp={prevTimestamp} sessionId={sessionId} entryId={entryId} />;
   }
   if (message.role === "toolResult") {
     // Rendered inline under its toolCall — skip standalone rendering if paired
@@ -111,7 +113,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     if ((message as CustomMessage).customType === "compaction") {
       return <CompactionMessageView message={message as CustomMessage} />;
     }
-    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} />;
+    return <CustomMessageView message={message as CustomMessage} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} />;
   }
   return null;
 }, (prev, next) => {
@@ -121,6 +123,7 @@ export const MessageView = memo(function MessageView({ message, isStreaming, too
     && prev.modelNames === next.modelNames
     && prev.cwd === next.cwd
     && prev.onOpenFile === next.onOpenFile
+    && prev.onOpenSession === next.onOpenSession
     && prev.entryId === next.entryId
     && prev.onFork === next.onFork
     && prev.forking === next.forking
@@ -339,6 +342,7 @@ function AssistantMessageView({
   modelNames,
   cwd,
   onOpenFile,
+  onOpenSession,
   showTimestamp,
   prevTimestamp,
   sessionId,
@@ -350,6 +354,7 @@ function AssistantMessageView({
   modelNames?: Record<string, string>;
   cwd?: string;
   onOpenFile?: (filePath: string) => void;
+  onOpenSession?: (sessionId: string) => void;
   showTimestamp?: boolean;
   prevTimestamp?: number;
   sessionId?: string;
@@ -521,7 +526,7 @@ function AssistantMessageView({
 
       <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
         {blockItems.map(({ block, originalIndex }) => (
-          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
+          <BlockView key={`${entryId ?? "stream"}-${originalIndex}`} block={block} toolResults={toolResults} isStreaming={isStreaming} streamingDuration={streamingDurations.get(originalIndex) ?? (block.type === "thinking" ? thinkingDurationFromFile : undefined)} toolCallDurations={toolCallDurations} cwd={cwd} onOpenFile={onOpenFile} onOpenSession={onOpenSession} sessionId={sessionId} entryId={entryId} blockIndex={originalIndex} />
         ))}
       </div>
 
@@ -574,7 +579,7 @@ function AssistantMessageView({
   );
 }
 
-function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
+function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCallDurations, cwd, onOpenFile, onOpenSession, sessionId, entryId, blockIndex }: { block: AssistantContentBlock; toolResults?: Map<string, ToolResultMessage>; isStreaming?: boolean; streamingDuration?: number; toolCallDurations?: Map<string, number>; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void; sessionId?: string; entryId?: string; blockIndex: number }) {
   if (block.type === "text") {
     return <TextBlock block={block as TextContent} isStreaming={isStreaming} cwd={cwd} onOpenFile={onOpenFile} />;
   }
@@ -585,7 +590,7 @@ function BlockView({ block, toolResults, isStreaming, streamingDuration, toolCal
     const tc = block as ToolCallContent;
     const result = toolResults?.get(tc.toolCallId);
     const duration = toolCallDurations?.get(tc.toolCallId);
-    return <ToolCallBlock block={tc} result={result} duration={duration} />;
+    return <ToolCallBlock block={tc} result={result} duration={duration} onOpenSession={onOpenSession} />;
   }
   return null;
 }
@@ -676,11 +681,18 @@ function ThinkingBlock({ block, duration, sessionId, entryId, blockIndex }: {
 }
 
 
-function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number }) {
+function ToolCallBlock({ block, result, duration, onOpenSession }: { block: ToolCallContent; result?: ToolResultMessage; duration?: number; onOpenSession?: (sessionId: string) => void }) {
   const [expanded, setExpanded] = useState(false);
   const inputStr = JSON.stringify(block.input, null, 2);
   const isEditTool = isEditToolName(block.toolName);
   const resultDiff = result && !result.isError ? getResultDiff(result) : null;
+  // E11-6a: a background Agent-tool call synthesizes a "started" result whose
+  // details carry the sub-agent's child session id → deep-link into it live.
+  const bgDetails = (result as (ToolResultMessage & { details?: unknown }) | undefined)?.details;
+  const bgChildSessionId =
+    isRecord(bgDetails) && bgDetails.status === "background" && typeof bgDetails.childSessionId === "string"
+      ? bgDetails.childSessionId
+      : null;
 
   // Result display
   const resultText = result
@@ -730,6 +742,35 @@ function ToolCallBlock({ block, result, duration }: { block: ToolCallContent; re
           <polyline points="2 3.5 5 6.5 8 3.5" />
         </svg>
       </button>
+
+      {/* ── E11-6a: deep-link into a background sub-agent's live session ── */}
+      {bgChildSessionId && onOpenSession && (
+        <button
+          onClick={() => onOpenSession(bgChildSessionId)}
+          title="Open the sub-agent's session"
+          style={{
+            display: "inline-flex",
+            alignItems: "center",
+            gap: 4,
+            padding: "4px 10px 8px",
+            background: "none",
+            border: "none",
+            color: "var(--accent)",
+            cursor: "pointer",
+            fontSize: 11,
+            fontWeight: 600,
+          }}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="4" y="8" width="16" height="12" rx="2" />
+            <line x1="12" y1="8" x2="12" y2="4" />
+            <circle cx="12" cy="3" r="1" />
+            <line x1="9" y1="13" x2="9" y2="15" />
+            <line x1="15" y1="13" x2="15" y2="15" />
+          </svg>
+          Open sub-agent →
+        </button>
+      )}
 
       {/* ── Expanded: input args ── */}
       {expanded && !isEditTool && (
@@ -1130,7 +1171,7 @@ function CompactionFileList({ title, files }: { title: string; files: string[] }
   );
 }
 
-function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void }) {
+function CustomMessageView({ message, cwd, onOpenFile, onOpenSession }: { message: CustomMessage; cwd?: string; onOpenFile?: (filePath: string) => void; onOpenSession?: (sessionId: string) => void }) {
   const isHiddenDisplay = message.display === false;
   const [contentExpanded, setContentExpanded] = useState(!isHiddenDisplay);
   const [detailsExpanded, setDetailsExpanded] = useState(false);
@@ -1141,6 +1182,12 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
   const detailsText = hasDetails ? safeJson(message.details) : "";
   const title = formatCustomType(message.customType);
   const time = formatTime(message.timestamp);
+  // E11-6a: a completed background sub-agent's notification carries the child
+  // session id → offer to open the sub-agent's own (browsable) session.
+  const childSessionId =
+    message.customType === "subagent-notification" && isRecord(message.details) && typeof message.details.childSessionId === "string"
+      ? message.details.childSessionId
+      : null;
 
   const copyContent = () => {
     copyText(text || detailsText).then(() => {
@@ -1244,6 +1291,33 @@ function CustomMessageView({ message, cwd, onOpenFile }: { message: CustomMessag
               {copied ? "Copied" : "Copy"}
             </button>
           ) : null}
+          {childSessionId && onOpenSession && (
+            <button
+              onClick={() => onOpenSession(childSessionId)}
+              title="Open the sub-agent's session"
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: 4,
+                padding: "3px 7px",
+                border: "none",
+                background: "none",
+                color: "var(--accent)",
+                cursor: "pointer",
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="4" y="8" width="16" height="12" rx="2" />
+                <line x1="12" y1="8" x2="12" y2="4" />
+                <circle cx="12" cy="3" r="1" />
+                <line x1="9" y1="13" x2="9" y2="15" />
+                <line x1="15" y1="13" x2="15" y2="15" />
+              </svg>
+              Open sub-agent →
+            </button>
+          )}
           {(hasDetails || isHiddenDisplay) && (
             <button
               onClick={() => {

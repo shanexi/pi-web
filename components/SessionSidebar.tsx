@@ -1661,6 +1661,11 @@ function SessionItem({
   const inputRef = useRef<HTMLInputElement>(null);
 
   const title = session.name || session.firstMessage.slice(0, 50) || session.id.slice(0, 12);
+  // E11-6a: a background sub-agent session (spawned by the Agent tool) is NOT a
+  // fork — it's an independent task with fresh context. It still nests under
+  // its spawning conversation (the relationship is real), but it must not wear
+  // the fork/branch glyph, which means "branched copy sharing history".
+  const isSubAgent = session.kind === "background";
 
   const startRename = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
@@ -1802,14 +1807,25 @@ function SessionItem({
       ) : (
         /* ── Normal view ── */
         <>
-          {/* Fork indicator for child sessions */}
+          {/* Child-session indicator: a bot glyph for background sub-agents,
+              the fork/branch glyph for real forks (E11-6a). */}
           {depth > 0 && (
-            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
-              <line x1="6" y1="3" x2="6" y2="15" />
-              <circle cx="18" cy="6" r="3" />
-              <circle cx="6" cy="18" r="3" />
-              <path d="M18 9a9 9 0 0 1-9 9" />
-            </svg>
+            isSubAgent ? (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }} aria-label="sub-agent">
+                <rect x="4" y="8" width="16" height="12" rx="2" />
+                <line x1="12" y1="8" x2="12" y2="4" />
+                <circle cx="12" cy="3" r="1" />
+                <line x1="9" y1="13" x2="9" y2="15" />
+                <line x1="15" y1="13" x2="15" y2="15" />
+              </svg>
+            ) : (
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="var(--text-dim)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <line x1="6" y1="3" x2="6" y2="15" />
+                <circle cx="18" cy="6" r="3" />
+                <circle cx="6" cy="18" r="3" />
+                <path d="M18 9a9 9 0 0 1-9 9" />
+              </svg>
+            )
           )}
           <div style={{ flex: 1, minWidth: 0 }}>
             <div
@@ -1833,6 +1849,19 @@ function SessionItem({
             <div style={{ marginTop: 2, display: "flex", gap: 8, color: "var(--text-dim)", fontSize: 11, minWidth: 0 }}>
               <span title={session.modified}>{formatRelativeTime(session.modified)}</span>
               <span>{session.messageCount} msgs</span>
+              {isSubAgent && (
+                <span
+                  title="Background sub-agent (spawned by the Agent tool)"
+                  style={{
+                    display: "inline-flex", alignItems: "center", flexShrink: 0,
+                    padding: "0 5px", borderRadius: 4, fontSize: 10, fontWeight: 600,
+                    letterSpacing: 0.2, color: "var(--accent)",
+                    background: "color-mix(in srgb, var(--accent) 12%, transparent)",
+                  }}
+                >
+                  sub-agent
+                </span>
+              )}
               {session.worktreeBranch && (
                 <span
                   title={`Worktree: ${session.cwd}`}
@@ -1854,7 +1883,7 @@ function SessionItem({
           {hasChildren && (
             <button
               onClick={(e) => { e.stopPropagation(); onToggleCollapse?.(); }}
-              title={collapsed ? "Expand forks" : "Collapse forks"}
+              title={collapsed ? "Expand children" : "Collapse children"}
               style={{
                 display: "flex", alignItems: "center", justifyContent: "center",
                 width: 20, height: 20, padding: 0, flexShrink: 0,

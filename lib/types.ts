@@ -280,6 +280,10 @@ export interface SessionInfo {
   messageCount: number;
   firstMessage: string;
   parentSessionId?: string; // set if this session was forked from another
+  /** E11-6a: "background" for a headless background sub-agent session (spawned
+   *  by the Agent tool, not a fork). Drives the distinct sidebar treatment —
+   *  an agent glyph + "sub-agent" tag instead of the fork/branch indicator. */
+  kind?: string;
   /** Main repo root shared by all worktrees of this cwd (cwd itself for non-git dirs).
    *  Always set by the server; optional because the client builds transient
    *  SessionInfo objects before the first refresh. Fall back to cwd. */
