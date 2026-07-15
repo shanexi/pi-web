@@ -19,7 +19,7 @@ import { downloadSessionExport } from "@/lib/session-export";
 import { EXTENSIONS_PANEL, FILE_PANELS, LOCAL_PANELS, SKILLS_PANEL } from "@/lib/feature-flags";
 import { getFileName } from "@/lib/file-paths";
 import { buildAtMentionText, buildFileAtMentionsText } from "@/lib/file-fuzzy";
-import { apiFetch, apiUrl, loginUrl } from "@/lib/api-base";
+import { apiFetch, loginUrl } from "@/lib/api-base";
 import type { SessionInfo, SessionTreeNode } from "@/lib/types";
 import type { ChatInputHandle } from "./ChatInput";
 import type { SessionStatsInfo } from "@/lib/pi-types";
@@ -369,19 +369,13 @@ export function AppShell() {
     });
   }, [fileTabs]);
 
+  // E1: client-side export. Upstream's "view full history" opens the server
+  // exporter inline (/export?inline=1) — that route doesn't exist on the
+  // Worker backend (G12 will bring the official exporter), so the top-bar
+  // button downloads the client-generated HTML transcript instead
+  // (upstream 96347f8 removed the separate export action; this keeps one
+  // entry point with the fork's semantics until G12 restores inline view).
   const handleViewFullHistory = useCallback(() => {
-    if (!selectedSession) return;
-    window.open(
-      apiUrl(`/api/sessions/${encodeURIComponent(selectedSession.id)}/export?inline=1`),
-      "_blank",
-      "noopener,noreferrer",
-    );
-  }, [selectedSession]);
-
-  // E1: client-side export. The old server route (.../export) is gone on the
-  // Worker backend (it 404s), so generate the HTML transcript in the browser
-  // from the persisted history and trigger a download — no Worker route.
-  const handleExportSession = useCallback(() => {
     if (!selectedSession) return;
     void downloadSessionExport(selectedSession).catch(() => {
       // Best-effort: a failed fetch/blob leaves the UI untouched.
@@ -695,8 +689,8 @@ export function AppShell() {
               <button
                 onClick={handleViewFullHistory}
                 disabled={!selectedSession}
-                title={selectedSession ? "View full history" : "Full history is available after the session is saved"}
-                aria-label="View full history"
+                title={selectedSession ? "Export full history (HTML)" : "Full history is available after the session is saved"}
+                aria-label="Export full history"
                 style={{
                   display: "flex",
                   alignItems: "center",
