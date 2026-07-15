@@ -704,7 +704,7 @@ export function SkillsConfig({
     setCheckingUpdates((current) => new Set([...current, ...keys]));
     if (!skill) setCheckingAll(true);
     try {
-      const res = await fetch(apiUrl("/api/skills/check"), {
+      const res = await apiFetch("/api/skills/check", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -743,7 +743,7 @@ export function SkillsConfig({
     setUpdatingSkill(key);
     setUpdateError(null);
     try {
-      const res = await fetch(apiUrl("/api/skills/update"), {
+      const res = await apiFetch("/api/skills/update", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

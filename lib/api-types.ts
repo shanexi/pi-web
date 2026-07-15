@@ -217,3 +217,47 @@ export interface PluginsListResponse {
   totals: PluginResourceCounts;     // package resources only (no builtins), upstream-aligned
   diagnostics: PluginDiagnostic[];
 }
+
+// 上游 v0.7.12 skill 类型(SkillsConfig 消费;fork 原 api-types 缺,rebase 收尾补入)
+export type SkillInstallScope = "global" | "project";
+
+export interface SkillInstallInfo {
+  package: string;
+  scope: SkillInstallScope;
+  source: string;
+  sourceType?: string;
+  skillsShUrl?: string;
+  skillPath?: string;
+  ref?: string;
+  versionHash?: string;
+  canCheckForUpdates: boolean;
+}
+
+export type SkillUpdateState =
+  | "up-to-date"
+  | "update-available"
+  | "unsupported"
+  | "error";
+
+export interface SkillUpdateResult {
+  package: string;
+  scope: SkillInstallScope;
+  state: SkillUpdateState;
+  currentVersion?: string;
+  latestVersion?: string;
+  message?: string;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  filePath: string;
+  baseDir: string;
+  disableModelInvocation: boolean;
+  sourceInfo: {
+    source?: string;
+    scope?: string;
+  };
+  install?: SkillInstallInfo;
+}
+
