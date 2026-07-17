@@ -505,9 +505,16 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
 
   useImperativeHandle(ref, () => ({
     openUploadPicker() {
+      // D3 x upstream upload: with no sandbox the `uninitialized` branch below
+      // renders instead of the main tree, so the hidden <input> is unmounted
+      // and this click would silently do nothing. Say so rather than no-op.
+      if (uninitialized) {
+        setUploadError("工作区未初始化 —— 请先点「初始化工作区」");
+        return;
+      }
       if (!uploadBusy) uploadInputRef.current?.click();
     },
-  }), [uploadBusy]);
+  }), [uploadBusy, uninitialized]);
 
   useEffect(() => {
     onUploadBusyChange?.(uploadBusy);
@@ -582,8 +589,8 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
         <div style={{ fontSize: 11, color: "var(--text-dim)", marginBottom: 8 }}>
           工作区未初始化
         </div>
-        {error && (
-          <div style={{ fontSize: 10, color: "var(--error)", marginBottom: 8 }}>{error}</div>
+        {(error || uploadError) && (
+          <div style={{ fontSize: 10, color: "#f87171", marginBottom: 8 }}>{error ?? uploadError}</div>
         )}
         <button
           onClick={() => void handleInitWorkspace()}
