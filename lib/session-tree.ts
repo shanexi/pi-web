@@ -9,8 +9,7 @@
  *
  * Pin and archive flags are keyed by the family ROOT session id. An archived
  * family returns on its own when the root session gets a newer message
- * (`root.modified`, not `latestModified`: subagent activity alone does not
- * bring it back) or while any member is running.
+ * (`root.modified`) or while the session is running.
  *
  * Groups keep the stored project order (`projectOrder`): activity never moves
  * a project that has a place in it. Pinned projects come first, then the
@@ -66,7 +65,7 @@ export type SidebarRow =
   | { kind: "archive-group"; key: string; project: SidebarProject; count: number };
 
 export interface SessionTreeInput {
-  /** The full catalog (allSessions), subagents included. */
+  /** The full conversation catalog (allSessions). */
   sessions: readonly SessionInfo[];
   uiState: SessionUiState;
   runningIds: ReadonlySet<string>;
@@ -129,17 +128,17 @@ function compareDesc(a: number, b: number): number {
 }
 
 export function familyIds(family: SessionFamily): string[] {
-  return [family.root.id, ...family.subagents.map((session) => session.id)];
+  return [family.root.id];
 }
 
 function anyMemberIn(family: SessionFamily, ids: ReadonlySet<string>): boolean {
   if (ids.size === 0) return false;
-  return ids.has(family.root.id) || family.subagents.some((session) => ids.has(session.id));
+  return ids.has(family.root.id);
 }
 
 function isMember(family: SessionFamily, sessionId: string | null): boolean {
   if (!sessionId) return false;
-  return family.root.id === sessionId || family.subagents.some((session) => session.id === sessionId);
+  return family.root.id === sessionId;
 }
 
 /**
@@ -628,7 +627,7 @@ export function familiesToArchive(
 /**
  * A project group's "Delete all sessions": root ids of every family of
  * `projectKey` that has a file, pinned and archived ones included (the
- * server deletes their subagent sessions with them), and how many families
+ * server deletes these sessions), and how many families
  * it keeps because they run or wait for input: deleting one would stop its
  * run. Transient families have no file to delete.
  */

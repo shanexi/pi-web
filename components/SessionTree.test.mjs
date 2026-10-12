@@ -11,7 +11,7 @@ const React = await jiti.import("react");
 const { renderToStaticMarkup } = await jiti.import("react-dom/server");
 const { I18nProvider } = await jiti.import("@/hooks/useI18n.tsx");
 const { SessionTree, sessionRowTitle } = await jiti.import("./SessionTree.tsx");
-const { buildSessionTree, SIDEBAR_ROW_HEIGHTS } = await jiti.import("@/lib/session-tree.ts");
+const { SIDEBAR_ROW_HEIGHTS } = await jiti.import("@/lib/session-tree.ts");
 const source = await readFile(new URL("./SessionTree.tsx", import.meta.url), "utf8");
 const css = await readFile(new URL("../app/sidebar.css", import.meta.url), "utf8");
 
@@ -96,7 +96,7 @@ function sessionRow(root, { context = "group", status = {}, archivedAt = null, r
   return {
     kind: "session",
     key: `session:${context}:${root.id}`,
-    family: { root, subagents: [], latestModified: root.modified },
+    family: { root, latestModified: root.modified },
     context,
     project: rowProject,
     status: { running: false, awaiting: false, unread: false, selected: false, transient: false, ...status },
@@ -426,33 +426,6 @@ test("a reveal request keeps its row mounted", () => {
   const kept = renderedKeys(render({ rows, reveal: { id: 1, at, rowKey: "session:group:s150" } }));
   assert.equal(kept.at(-1), "session:group:s150");
   assert.deepEqual(renderedKeys(render({ rows, reveal: { id: 1, at, rowKey: "group:missing" } })), renderedKeys(render({ rows })));
-});
-
-test("renders the model built from a catalog with unique row keys", () => {
-  const sessions = [
-    session("a", { modified: new Date(NOW - MINUTE).toISOString() }),
-    session("b", { cwd: "/work/other", projectRoot: "/work/other", projectKey: "/work/other" }),
-    session("sub", { relation: { kind: "subagent", parentSessionId: "a", profile: "x", description: "", status: "running" } }),
-  ];
-  const model = buildSessionTree({
-    sessions,
-    uiState: { version: 1, revision: 0, sessions: { b: { pinnedAt: NOW } }, projects: {} },
-    runningIds: new Set(["sub"]),
-    unreadIds: new Set(),
-    selectedSessionId: "a",
-    currentProject: { key: "/work/app", root: "/work/app" },
-    groupExpansion: {},
-    moreShown: {},
-    pinnedCollapsed: false,
-  });
-  const html = render({ rows: model.rows });
-  const keys = renderedKeys(html);
-  assert.equal(new Set(keys).size, keys.length);
-  assert.deepEqual(keys, ["pinned-header", "session:pinned:b", "group:/work/app", "session:group:a", "footer-open"]);
-  const familyRow = rowMarkup(html, "session:group:a");
-  assert.match(familyRow, /is-selected/);
-  assert.match(familyRow, /aria-label="Agent running…"/);
-  assert.match(rowMarkup(html, "session:pinned:b"), /<span class="session-tree-project">other<\/span>/);
 });
 
 test("row titles fall back from the name to the first message to the id", () => {

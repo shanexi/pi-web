@@ -1,16 +1,5 @@
 import type { McpExposure, ResourceDiagnostic } from "@earendil-works/pi-coding-agent";
 import type { McpImportNote } from "./mcp-import-core";
-import type { SubagentProfile } from "./subagents";
-
-export interface SubagentProfilesResponse {
-  profiles: SubagentProfile[];
-}
-
-export interface SubagentSettingsResponse {
-  enabled: boolean;
-  maxConcurrent: number;
-}
-
 /** Code mode's one choice (ADR 0006): Automatic writes nothing, Always on adds `+codemode` to the global defaultTools. */
 export type McpCodemodePreference = "automatic" | "always";
 
@@ -830,7 +819,7 @@ export interface PushConfigResponse {
 // `export const capabilities` — declaring it forces transport=sandbox). The UI
 // still renders whatever the API declares — it does NOT hardcode this set —
 // so this union is a type aid, not a grid the panel iterates.
-export type ExtensionCapability = "promptDrive" | "modelSteering" | "toolInput" | "transcript" | "exec" | "inference";
+export type ExtensionCapability = "promptDrive" | "modelSteering" | "toolInput" | "transcript" | "exec";
 
 // E7 → E8c: the GET /api/plugins row. E7's {id, description, enabled} stay for
 // backward compat and are all a BUILT-IN row ever carries; the E8c fields are

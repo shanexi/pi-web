@@ -175,60 +175,6 @@ test("keeps the input JSON for a write with another argument, an empty file or s
   }
 });
 
-test("renders subagents as standard tool calls with only an extra side-panel button", () => {
-  const block = {
-    type: "toolCall",
-    toolCallId: "call-agent-1",
-    toolName: "Agent",
-    input: {
-      subagent_type: "Explore",
-      prompt: "Find the parser",
-      description: "Find parser",
-    },
-  };
-  const result = {
-    role: "toolResult",
-    toolCallId: block.toolCallId,
-    content: [{ type: "text", text: "Parser is in lib/parser.ts" }],
-    details: {
-      kind: "pi-web-subagent",
-      sessionId: "child-session",
-      profile: "Explore",
-      description: "Find parser",
-      status: "completed",
-      runInBackground: false,
-      createdAt: "2026-01-01T00:00:00.000Z",
-    },
-  };
-  const html = renderMessage({
-    role: "assistant",
-    provider: "anthropic",
-    model: "claude-test",
-    content: [block],
-  }, {
-    toolResults: new Map([[block.toolCallId, result]]),
-    onOpenSubagent() {},
-  });
-
-  assert.match(html, /border:1px solid rgba\(34,197,94,0\.25\)/);
-  assert.match(html, />Agent</);
-  assert.match(html, />Explore</);
-  assert.match(html, /aria-label="View sub-agent work in side panel"/);
-  assert.doesNotMatch(html, />completed</);
-  assert.doesNotMatch(html, />Find parser</);
-
-  const ordinaryHtml = renderMessage({
-    role: "assistant",
-    provider: "anthropic",
-    model: "claude-test",
-    content: [{ ...block, toolCallId: "call-extension-1", toolName: "extension_tool" }],
-  }, {
-    toolResults: new Map(),
-    onOpenSubagent() {},
-  });
-  assert.doesNotMatch(ordinaryHtml, /View sub-agent work in side panel/);
-});
-
 test("a tool card shows the run time pi recorded, else the timestamps' difference, never a tiny one", () => {
   const block = { type: "toolCall", toolCallId: "call-duration-1", toolName: "bash", arguments: { command: "make" } };
   const message = { role: "assistant", provider: "anthropic", model: "claude-test", content: [block], timestamp: 1_000_000, durationMs: 4_000 };

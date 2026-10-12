@@ -526,8 +526,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   const [awaitingInputSessionIds, setAwaitingInputSessionIds] = useState<Set<string>>(() => new Set());
   const [unreadSessionIds, setUnreadSessionIds] = useState<Set<string>>(() => loadUnreadSessionIds());
   const previousRunningSessionIdsRef = useRef<Set<string>>(new Set());
-  const currentSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
-  const previousSuppressedCompletionSessionIdsRef = useRef<Set<string>>(new Set());
   // Once polling has delivered a snapshot it is the source of truth for
   // running state; late /api/sessions responses must not overwrite it.
   const runningPollAuthoritativeRef = useRef(false);
@@ -727,7 +725,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
         sessionListVersion: number;
         runningSessionIds?: string[];
         awaitingInputSessionIds?: string[];
-        completionNotificationSuppressedSessionIds?: string[];
       };
       if (loadId !== sessionLoadIdRef.current) return;
       sessionListVersionRef.current = data.sessionListVersion;
@@ -736,17 +733,12 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       // Treat the fetched running set as an initial fallback only. Once the
       // lightweight poll is live, a slow session-list fetch cannot overwrite it.
       if (!runningPollAuthoritativeRef.current) {
-        currentSuppressedCompletionSessionIdsRef.current = new Set(
-          data.completionNotificationSuppressedSessionIds ?? [],
-        );
         setRunningSessionIds((previous) => sameIdsOr(previous, data.runningSessionIds ?? []));
         setAwaitingInputSessionIds((previous) => sameIdsOr(previous, data.awaitingInputSessionIds ?? []));
       }
-      // Drop markers for deleted sessions and for subagents, whose completion
-      // is intentionally silent even if an older client marked them unread.
+      // Drop unread markers for deleted sessions.
       const unreadEligibleIds = new Set(
         data.sessions
-          .filter((session) => session.relation?.kind !== "subagent")
           .map((session) => session.id),
       );
       setUnreadSessionIds((prev) => {
@@ -885,14 +877,10 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
           sessionListVersion: number;
           runningSessionIds?: string[];
           awaitingInputSessionIds?: string[];
-          completionNotificationSuppressedSessionIds?: string[];
           sessionUiStateRevision?: number | null;
         };
         if (stopped || controller !== current) return;
         runningPollAuthoritativeRef.current = true;
-        currentSuppressedCompletionSessionIdsRef.current = new Set(
-          data.completionNotificationSuppressedSessionIds ?? [],
-        );
         setRunningSessionIds((previous) => sameIdsOr(previous, data.runningSessionIds ?? []));
         setAwaitingInputSessionIds((previous) => sameIdsOr(previous, data.awaitingInputSessionIds ?? []));
         // Pins and archive changed in another window: reload them.
@@ -940,14 +928,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   useEffect(() => {
     const previous = previousRunningSessionIdsRef.current;
     const completedInBackground = [...previous].filter((id) => !runningSessionIds.has(id) && id !== selectedSessionId);
-    const knownSubagentIds = new Set(
-      allSessions
-        .filter((session) => session.relation?.kind === "subagent")
-        .map((session) => session.id),
-    );
-    const completedWithNotifications = completedInBackground.filter(
-      (id) => !previousSuppressedCompletionSessionIdsRef.current.has(id) && !knownSubagentIds.has(id),
-    );
+    const completedWithNotifications = completedInBackground;
     const newlyRunning = [...runningSessionIds].filter((id) => !previous.has(id));
 
     if (completedWithNotifications.length > 0 || newlyRunning.length > 0) {
@@ -972,11 +953,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
 
     previousRunningSessionIdsRef.current = runningSessionIds;
-    previousSuppressedCompletionSessionIdsRef.current = new Set(
-      [...runningSessionIds].filter(
-        (id) => currentSuppressedCompletionSessionIdsRef.current.has(id) || knownSubagentIds.has(id),
-      ),
-    );
   }, [runningSessionIds, selectedSessionId, allSessions, loadSessions, onBackgroundTaskDone]);
 
   useEffect(() => {
@@ -1672,7 +1648,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       if (read) {
         for (const id of familyIds(family)) next.delete(id);
       } else {
-        // Subagents never carry the marker (loadSessions prunes them).
         next.add(family.root.id);
       }
       return next;
@@ -1813,7 +1788,6 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     if (session.transient) return;
     setConfirmDeleteRootId((current) => (current === session.id ? null : current));
     try {
-      // The server deletes the family's subagent sessions with it.
       await apiFetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
       onSessionDeleted?.(session.id);
       void loadSessions();

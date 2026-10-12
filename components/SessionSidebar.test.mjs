@@ -97,20 +97,6 @@ test("scrolling keeps the focused session and the viewport mounted without expan
   }
 });
 
-test("subagents fold into their main session row, which carries their running, unread and selected state", () => {
-  const child = session("child", { relation: { kind: "subagent", parentSessionId: "main", profile: "explore", description: "", status: "running" } });
-  const { rows } = buildSessionTree(treeInput({
-    sessions: [session("main"), child],
-    runningIds: new Set(["child"]),
-    unreadIds: new Set(["child"]),
-    selectedSessionId: "child",
-    currentProject: { key: "/work/alpha", root: "/work/alpha" },
-  }));
-  const sessionRows = rows.filter((row) => row.kind === "session");
-  assert.deepEqual(sessionRows.map((row) => row.family.root.id), ["main"]);
-  assert.deepEqual(sessionRows[0].status, { running: true, awaiting: false, unread: true, selected: true, transient: false });
-});
-
 test("only Shift skips the session deletion confirmation", () => {
   assert.match(
     callbackBody("requestDelete"),
@@ -149,7 +135,7 @@ test("on a desktop the files sit below the sessions by default, both in view", (
   // Pins and archive not loaded yet: the tree waits instead of flashing archived rows.
   assert.match(html, /<div class="session-tree-message">Loading\.\.\.<\/div>/);
   // Without a folder the files' search has nothing to search.
-  assert.match(render(), /<button type="button" disabled="" title="Search files" aria-label="Search files" aria-expanded="false" aria-controls="file-search-input" class="sidebar-tool-button">/);
+  assert.match(render(), /<button type="button" title="Search files" aria-label="Search files" aria-expanded="false" aria-controls="file-search-input" class="sidebar-tool-button">/);
 });
 
 test("the fold's and the archive view's motions in the CSS last as long as the hook's phase", async () => {
@@ -238,16 +224,16 @@ test("below the sessions the section's header row holds the files' keys in the f
   // search in the toolbar row's place.
   const head = html.slice(html.indexOf('<div class="sidebar-files-head">'), html.indexOf('<div class="sidebar-files-scroll'));
   assert.doesNotMatch(head, /sidebar-tool-button|sidebar-files-actions/);
-  // Without a folder they wait, disabled, in the same places; so does the
-  // terminal without a handler, where the files tab leaves it out.
+  // Cloudflare opens /workspace immediately; only a missing terminal handler
+  // and absent Git changes disable their controls.
   assert.deepEqual(keyLabels(sectionKeys(render())), [
     "Open workspace terminal (disabled)",
-    "Open in file manager (disabled)",
-    "Upload files to project root (disabled)",
-    "Refresh file list (disabled)",
-    "Show ignored files (disabled) pressed=false",
+    "Open in file manager",
+    "Upload files to project root",
+    "Refresh file list",
+    "Show ignored files pressed=false",
     "0 changed files (disabled) pressed=false",
-    "Search files (disabled) expanded=false",
+    "Search files expanded=false",
   ]);
   assert.deepEqual(keyLabels(sectionKeys(render({ selectedCwd: "/work/alpha" }))).slice(0, 3), [
     "Open workspace terminal (disabled)",
@@ -414,12 +400,13 @@ test("the layout, the tab and the fold chosen last never change the first render
   assert.doesNotMatch(clientHtml, /role="tablist"/);
 });
 
-test("the files show the composer bar's picker in one row below the sessions, asking for a project until it has one", () => {
+test("the cloud files picker opens the default workspace from its first render", () => {
   const html = render({ selectedCwd: "/work/alpha" });
   const filesPanel = html.slice(html.indexOf('id="session-sidebar-panel-files"'));
-  // Before the sidebar has a cwd: the project box asks for one.
-  assert.match(filesPanel, /<div class="project-picker is-row" role="group" aria-label="Project and worktree"><button type="button" class="project-picker-button is-project is-empty" title="" aria-haspopup="menu" aria-expanded="false">/);
-  assert.match(filesPanel, /<span class="project-picker-label">Select project…<\/span>/);
+  assert.match(filesPanel, /<div class="project-picker is-row" role="group" aria-label="Project and worktree">/);
+  assert.match(filesPanel, /title="\/workspace"/);
+  assert.match(filesPanel, /<span class="project-picker-path"><span>\/workspace<\/span>/);
+  assert.doesNotMatch(filesPanel, /Select project…/);
 });
 
 test("the running poll keeps the same Set while the running ids stay the same", () => {

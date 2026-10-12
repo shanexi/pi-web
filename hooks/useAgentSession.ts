@@ -1574,9 +1574,8 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
       }
       case "message_end": {
         const completed = event.message as AgentMessage | undefined;
-        // Background subagent notifications may arrive after the foreground
-        // prompt ends. Reconcile their persisted custom messages without
-        // restarting the completed prompt's streaming UI.
+        // An extension can publish a persisted note while the session is idle.
+        // Refresh history without restarting the completed prompt's UI.
         if (!agentRunningRef.current && completed?.role === "custom") {
           const sid = sessionIdRef.current;
           if (sid) void loadSession(sid);

@@ -103,7 +103,6 @@ export function forkFailureMessage(code: string | undefined, error: string): { k
     case "not_found": return { key: "sidebar.forkNotFound" };
     case "unsaved": return { key: "sidebar.forkUnsaved" };
     case "empty": return { key: "sidebar.forkEmpty" };
-    case "subagent":
     case "request-denied":
       return { key: "sidebar.forkUnavailable" };
     default: return { key: "sidebar.forkFailed", params: { error } };
@@ -115,9 +114,9 @@ export const PROJECT_DELETE_IDS_PER_REQUEST = 500;
 
 /** What a project's "Delete all sessions" did, summed over its requests. */
 export interface ProjectSessionsDeleteOutcome {
-  /** The root ids deleted; their subagent sessions went with them. */
+  /** The selected session ids deleted. */
   deletedRoots: string[];
-  /** Every session id deleted, subagent sessions included. */
+  /** Every session id deleted. */
   deleted: string[];
   /** Root ids kept because they started running after the confirmation. */
   running: string[];

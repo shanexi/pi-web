@@ -46,10 +46,10 @@ test("a locally applied title survives until the catalogue carries it", () => {
 });
 
 test("values the catalogue does carry always win", () => {
-  const merged = mergeCatalogRow(row({ modified: "2026-01-02", messageCount: 1 }), row({ modified: "2026-06-01", messageCount: 99, relation: { kind: "subagent", parentSessionId: "p1" } }));
+  const merged = mergeCatalogRow(row({ modified: "2026-01-02", messageCount: 1 }), row({ modified: "2026-06-01", messageCount: 99, relation: { kind: "fork", originSessionId: "p1" } }));
   assert.equal(merged.modified, "2026-06-01");
   assert.equal(merged.messageCount, 99);
-  assert.deepEqual(merged.relation, { kind: "subagent", parentSessionId: "p1" });
+  assert.deepEqual(merged.relation, { kind: "fork", originSessionId: "p1" });
 });
 
 test("a persisted row clears the transient flag of a fresh session", () => {

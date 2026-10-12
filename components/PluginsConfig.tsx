@@ -54,14 +54,13 @@ const CAPABILITY_PLAIN: Record<string, string> = {
   toolInput: "rewrite tool inputs",
   transcript: "read your full transcript",
   exec: "run shell commands in your sandbox (which has your files + network)",
-  inference: "call models on your behalf (via the broker, on your account)",
 };
 
-// Consent capabilities: on the SANDBOX transport, `transcript`/`inference` are a
+// Consent capabilities: on the SANDBOX transport, `transcript` is a
 // consent signal (not a hard gate — the code already has full sandbox access), so
 // the user may grant them even when the package never self-declared them. Offered
 // only for sandbox extensions; DW extensions expose only their declared caps.
-const SANDBOX_CONSENT_CAPS: ExtensionCapability[] = ["transcript", "inference"];
+const SANDBOX_CONSENT_CAPS: ExtensionCapability[] = ["transcript"];
 
 function capabilityPlain(cap: string): string {
   return CAPABILITY_PLAIN[cap] ?? cap;
@@ -433,11 +432,11 @@ function ExtensionResourceCard({
   onToggle: (ext: ExtensionInfo) => void;
   onGrant: (ext: ExtensionInfo, cap: ExtensionCapability, shouldGrant: boolean) => void;
 }) {
-  const declared = ext.declaredCapabilities ?? [];
-  const granted = ext.grantedCapabilities ?? [];
+  const declared = (ext.declaredCapabilities ?? []).filter((cap) => Object.hasOwn(CAPABILITY_PLAIN, cap));
+  const granted = (ext.grantedCapabilities ?? []).filter((cap) => Object.hasOwn(CAPABILITY_PLAIN, cap));
   // Grantable = declared ∪ (sandbox consent caps for a sandbox extension). This
-  // is what lets you grant `transcript`/`inference` to a package that declared
-  // nothing (e.g. rpiv-todo, pi-subagents) — the backend re-validates the same set.
+  // is what lets you grant `transcript` to a package that declared
+  // nothing (e.g. rpiv-todo) — the backend re-validates the same set.
   const grantable: ExtensionCapability[] =
     ext.transport === "sandbox" ? Array.from(new Set([...declared, ...SANDBOX_CONSENT_CAPS])) : declared;
   // While ANY grant for this extension is in flight, EVERY badge is disabled:
@@ -526,7 +525,7 @@ function ExtensionResourceCard({
       <TransportBadge transport={ext.transport} />
 
       {/* Capability badges — declared caps plus, for a sandbox extension, the
-          consent caps (transcript/inference) the user can grant by choice. */}
+          consent caps (transcript) the user can grant by choice. */}
       {grantable.length > 0 && (
         <div style={{ display: "flex", gap: 6, alignItems: "center", flexWrap: "wrap" }}>
           {grantable.map((cap) => (
@@ -1480,7 +1479,7 @@ function PluginsConfigMasterDetail({
       setGranting((s) => new Set(s).add(gkey));
       setActionError(null);
       setActionMessage(null);
-      const current = ext.grantedCapabilities ?? [];
+      const current = (ext.grantedCapabilities ?? []).filter((cap) => Object.hasOwn(CAPABILITY_PLAIN, cap));
       const nextCaps = shouldGrant
         ? Array.from(new Set([...current, cap]))
         : current.filter((c) => c !== cap);

@@ -1,13 +1,11 @@
 // E1: client-side session export.
 //
-// The chosen approach (per 阶段E任务 E1): the frontend already has the full
-// message history, so generate an HTML transcript in the browser and trigger a
-// download — NO new Worker route. We re-read the session through the existing,
-// owner-checked GET /api/sessions/:id (B2) so the export always reflects the
-// persisted sql mirror (works even after DO eviction), then render it to a
-// self-contained HTML blob.
+// Generate an HTML transcript from persisted history using authenticated API
+// reads. The initial response pins the branch, and cursor pages provide every
+// earlier message before the browser downloads the document.
 
-import { apiFetch } from "./api-base";
+import { apiFetch, apiUrl } from "./api-base";
+import { normalizeToolCalls } from "./normalize";
 import type { AgentMessage, ImageContent, SessionContext, SessionInfo } from "./types";
 
 function escapeHtml(s: string): string {
@@ -18,9 +16,10 @@ function escapeHtml(s: string): string {
 
 function imageSrc(block: ImageContent): string | null {
   const src = block.source;
-  if (src.type === "url" && src.url) return src.url;
-  if (src.type === "base64" && src.data) return `data:${src.media_type ?? "image/png"};base64,${src.data}`;
-  return null;
+  if (src?.type === "url" && src.url) return apiUrl(src.url);
+  if (src?.type === "base64" && src.data) return `data:${src.media_type ?? "image/png"};base64,${src.data}`;
+  const flat = block as unknown as { data?: string; mimeType?: string };
+  return flat.data ? `data:${flat.mimeType ?? "image/png"};base64,${flat.data}` : null;
 }
 
 /** Render one message's content array (or string) into escaped HTML fragments. */
@@ -143,17 +142,47 @@ function sanitizeFilename(name: string): string {
 }
 
 /**
- * Fetch the session history and trigger a browser download of the HTML
- * transcript. Reuses the existing owner-checked GET /api/sessions/:id — no
- * server export route needed. Throws on a non-ok response so the caller can
- * surface the failure.
+ * Read the complete branch selected by the initial owner-checked history request.
+ * Page failures and repeated cursors reject the export instead of truncating it.
  */
-export async function downloadSessionExport(session: SessionInfo): Promise<void> {
-  const res = await apiFetch(`/api/sessions/${encodeURIComponent(session.id)}`);
+export async function loadSessionExport(
+  session: SessionInfo,
+  fetcher: typeof apiFetch = apiFetch,
+): Promise<{ name: string; messages: AgentMessage[] }> {
+  const endpoint = `/api/sessions/${encodeURIComponent(session.id)}`;
+  const res = await fetcher(endpoint);
   if (!res.ok) throw new Error(`export failed: HTTP ${res.status}`);
-  const data = (await res.json()) as { info?: { name?: string }; context?: SessionContext };
-  const messages = data.context?.messages ?? [];
-  const name = data.info?.name || session.name || session.id.slice(0, 12);
+  const data = await res.json() as { info?: { name?: string }; leafId?: string | null; context?: SessionContext };
+  let context = data.context;
+  let messages = context?.messages.map(normalizeToolCalls) ?? [];
+  const entryIds = new Set(context?.entryIds ?? []);
+  const cursors = new Set<string>();
+
+  while (context?.hasMore) {
+    const cursor = context.oldestEntryId;
+    if (!cursor || cursors.has(cursor)) throw new Error("export failed: history cursor did not advance");
+    cursors.add(cursor);
+    const params = new URLSearchParams({ before: cursor, tail: "200" });
+    if (data.leafId) params.set("leafId", data.leafId);
+    const page = await fetcher(`${endpoint}/context?${params}`);
+    if (!page.ok) throw new Error(`export failed: HTTP ${page.status}`);
+    const next = await page.json() as { context?: SessionContext };
+    if (!next.context) throw new Error("export failed: missing history page");
+    context = next.context;
+    const olderMessages = context.messages.filter((_, index) => {
+      const id = context?.entryIds[index];
+      if (!id) return true;
+      if (entryIds.has(id)) return false;
+      entryIds.add(id);
+      return true;
+    }).map(normalizeToolCalls);
+    messages = [...olderMessages, ...messages];
+  }
+  return { name: data.info?.name || session.name || session.id.slice(0, 12), messages };
+}
+
+export async function downloadSessionExport(session: SessionInfo): Promise<void> {
+  const { name, messages } = await loadSessionExport(session);
   const html = buildSessionHtml(name, session, messages);
 
   const blob = new Blob([html], { type: "text/html;charset=utf-8" });

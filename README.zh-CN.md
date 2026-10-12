@@ -1,5 +1,7 @@
 # Pi Web
 
+[Cloudflare fork 定制清单](./docs/cloudflare-customizations.md)
+
 [English](./README.md) | [日本語](./README.ja.md) | [Русский](./README.ru.md)
 
 [pi 编程智能体](https://github.com/earendil-works/pi)的本地浏览器界面。Pi Web 与 pi 共用本机配置和会话文件，可在浏览器中查找和继续对话、运行智能体、配置模型与资源，并查看项目文件。
