@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { NewSessionContext, NewSessionTarget, ProjectChoice } from "@/lib/new-session-context";
@@ -32,7 +34,7 @@ interface Props {
 let homeDirCheck: Promise<string> | null = null;
 let homeDirFound = "";
 function loadHomeDir(): Promise<string> {
-  homeDirCheck ??= fetch("/api/home")
+  homeDirCheck ??= apiFetch("/api/home")
     .then((response) => response.json())
     .then((data: { home?: string }) => {
       homeDirFound = data.home ?? "";

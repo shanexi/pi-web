@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch, apiUrl } from "@/lib/api-base";
+
 import { memo, useState, useRef, useEffect, useMemo } from "react";
 import ReactMarkdown from "react-markdown";
 import { MarkdownBody } from "./MarkdownBody";
@@ -165,7 +167,7 @@ function loadThinkingContent(sessionId: string, entryId: string, blockIndex: num
     return cached;
   }
 
-  const request = fetch(
+  const request = apiFetch(
     `/api/sessions/${encodeURIComponent(sessionId)}/entries/${encodeURIComponent(entryId)}/thinking?blockIndex=${blockIndex}`,
   ).then(async (response) => {
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -381,7 +383,7 @@ function UserMessageView({ message, cwd, onOpenFile, entryId, onFork, forking, o
         const src = img.source
           ? img.source.type === "base64"
             ? `data:${img.source.media_type};base64,${img.source.data}`
-            : img.source.url ?? ""
+            : img.source.url ? apiUrl(img.source.url) : ""
           : flat.data
             ? `data:${flat.mimeType};base64,${flat.data}`
             : "";
@@ -1970,7 +1972,7 @@ function imageSource(img: ImageContent): string {
   if (img.source) {
     return img.source.type === "base64"
       ? `data:${img.source.media_type};base64,${img.source.data}`
-      : img.source.url ?? "";
+      : img.source.url ? apiUrl(img.source.url) : "";
   }
   return flat.data ? `data:${flat.mimeType};base64,${flat.data}` : "";
 }
@@ -2055,7 +2057,7 @@ function BashExecutionView({ message, sessionId }: { message: BashExecutionMessa
     setLoadingFull(true);
     setFullError(null);
     try {
-      const res = await fetch(fullOutputUrl);
+      const res = await apiFetch(fullOutputUrl);
       const d = await res.json() as { success?: boolean; data?: { output?: string }; error?: string };
       if (d.success) {
         setFullOutput(d.data?.output ?? "");

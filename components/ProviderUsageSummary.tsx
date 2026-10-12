@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { formatUpdatedTime } from "@/lib/i18n/format";
@@ -63,7 +65,7 @@ function ProviderUsageContent({ providerId, enabled }: { providerId: string; ena
     setQuerying(true);
     setError(null);
     try {
-      const response = await fetch("/api/provider-usage/query", {
+      const response = await apiFetch("/api/provider-usage/query", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ providerId }),

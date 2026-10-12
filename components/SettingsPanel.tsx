@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { useEffect, useLayoutEffect, useRef, useState, type ReactNode } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import { useTheme } from "@/hooks/useTheme";
@@ -28,6 +30,7 @@ import {
   isThinkingExpandedByDefault,
   setThinkingExpandedByDefault,
 } from "@/lib/thinking-expansion-preference";
+import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { ModelsConfig } from "./ModelsConfig";
 import { setupPushSubscription } from "@/lib/push-client";
 import { SkillsConfig } from "./SkillsConfig";
@@ -93,7 +96,8 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
 
   useEffect(() => {
     setThinkingExpanded(isThinkingExpandedByDefault());
-    void fetch("/api/web-auth")
+    if (!LOCAL_PANELS) return;
+    void apiFetch("/api/web-auth")
       .then((response) => response.ok ? response.json() : null)
       .then((data: { enabled?: boolean } | null) => setWebAuthEnabled(data?.enabled === true))
       .catch(() => {});
@@ -103,7 +107,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     setLoggingOut(true);
     setLogoutError("");
     try {
-      const response = await fetch("/api/web-auth", { method: "DELETE" });
+      const response = await apiFetch("/api/web-auth", { method: "DELETE" });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       window.location.replace("/login");
     } catch {
@@ -114,8 +118,9 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
   };
 
   useEffect(() => {
+    if (!LOCAL_PANELS) return;
     let cancelled = false;
-    void fetch("/api/tools/settings")
+    void apiFetch("/api/tools/settings")
       .then(async (response) => {
         const data = await response.json() as ToolSettingsResponse & { error?: string };
         if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
@@ -131,7 +136,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
     setShellSaving(true);
     setShellError(null);
     try {
-      const response = await fetch("/api/tools/settings", {
+      const response = await apiFetch("/api/tools/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ enabled }),
@@ -372,7 +377,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
         </section>
       )}
 
-      <section className="settings-general-section">
+      {LOCAL_PANELS && (<section className="settings-general-section">
         <h3 className="settings-general-heading">{t("settings.pushPermission")}</h3>
         <p className="settings-general-description">{t("settings.pushPermissionDescription")}</p>
         <div className="settings-shell-option">
@@ -395,7 +400,7 @@ function GeneralSettings({ sessionId, onSessionReloaded, quoteSelectionEnabled, 
             {pushStatus.message}
           </p>
         )}
-      </section>
+      </section>)}
 
       <section className="settings-general-section">
         <h3 className="settings-general-heading">{t("common.language")}</h3>
@@ -462,7 +467,7 @@ export function SettingsPanel({
     { id: "agents", label: t("common.agents") },
     { id: "plugins", label: t("common.plugins") },
     { id: "mcp", label: t("settings.mcp") },
-  ] as const).map((item) => ({ ...item, requiresProject: settingsSectionRequiresProject(item.id) }));
+  ] as const).filter((item) => LOCAL_PANELS || ["general", "skills", "plugins"].includes(item.id)).map((item) => ({ ...item, requiresProject: settingsSectionRequiresProject(item.id) }));
   const sectionRequiresProject = settingsSectionRequiresProject(section);
 
   useEffect(() => setLastSettingsSection(initialSection), [initialSection]);
@@ -494,7 +499,7 @@ export function SettingsPanel({
     setLastSettingsSection(nextSection);
   };
 
-  const sectionHost = (id: SettingsSection, content: ReactNode) => mountedSections.has(id) ? (
+  const sectionHost = (id: SettingsSection, content: ReactNode) => sections.some((item) => item.id === id) && mountedSections.has(id) ? (
     <div
       key={id}
       hidden={section !== id}
@@ -557,9 +562,9 @@ export function SettingsPanel({
           {sectionHost("models", <ModelsConfig embedded cwd={cwd} onClose={onClose} />)}
           {/* Visited sections stay mounted, so the ones whose answer depends on trust take the page's
               status and load again in place when trusting from Settings › MCP changes it. */}
-          {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} trust={projectTrust} onClose={onClose} />)}
-          {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} trust={projectTrust} onClose={onClose} onReloaded={onSessionReloaded} />)}
-          {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} trust={projectTrust} onClose={onClose} onReloaded={onSessionReloaded} />)}
+          {cwd && sectionHost("skills", <SkillsConfig embedded key={cwd} cwd={cwd} onClose={onClose} />)}
+          {cwd && sectionHost("agents", <AgentsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
+          {cwd && sectionHost("plugins", <PluginsConfig embedded key={cwd} cwd={cwd} sessionId={sessionId} onClose={onClose} onReloaded={onSessionReloaded} />)}
           {/* No project needed: the global mcp.json is listed alone, and a project adds its group. */}
           {sectionHost("mcp", <McpConfig embedded key={cwd ?? ""} cwd={cwd} trust={projectTrust} onTrustProject={onOpenTrustDialog} onProjectTrustChanged={onProjectTrustChanged} onClose={onClose} />)}
         </main>

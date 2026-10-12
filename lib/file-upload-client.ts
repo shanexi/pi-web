@@ -1,3 +1,4 @@
+import { apiUrl } from "./api-base";
 import { buildAtMentionText } from "./file-fuzzy";
 import { encodeFilePathForApi } from "./file-paths";
 
@@ -37,9 +38,10 @@ export function uploadFiles(
     files.forEach((file) => formData.append("files", file, file.name));
 
     const xhr = new XMLHttpRequest();
+    xhr.withCredentials = true;
     xhr.open(
       "POST",
-      `/api/files/${encodeFilePathForApi(targetDirectory)}?type=upload&conflict=${strategy}`,
+      apiUrl(`/api/files/${encodeFilePathForApi(targetDirectory)}?type=upload&conflict=${strategy}`),
     );
     xhr.upload.onprogress = (event) => {
       if (onProgress && event.lengthComputable && event.total > 0) {

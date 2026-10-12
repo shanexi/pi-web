@@ -647,10 +647,12 @@ function AddSkillPanel({
 }
 
 export function SkillsConfig({
+  embedded = false,
   cwd,
   onClose,
 }: {
   cwd: string;
+  embedded?: boolean;
   onClose: () => void;
 }) {
   const isMobile = useIsMobile();
@@ -820,11 +822,12 @@ export function SkillsConfig({
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.35)",
+        position: embedded ? "relative" : "fixed",
+        inset: embedded ? undefined : 0,
+        zIndex: embedded ? undefined : 1000,
+        background: embedded ? "none" : "rgba(0,0,0,0.35)",
         display: "flex",
+        height: embedded ? "100%" : undefined,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -834,10 +837,10 @@ export function SkillsConfig({
     >
       <div
         style={{
-          width: isMobile ? "calc(100vw - 16px)" : 860,
-          maxWidth: "calc(100vw - 16px)",
-          height: isMobile ? "calc(100dvh - 16px)" : "78vh",
-          maxHeight: "calc(100dvh - 16px)",
+          width: embedded ? "100%" : isMobile ? "calc(100vw - 16px)" : 860,
+          maxWidth: embedded ? "100%" : "calc(100vw - 16px)",
+          height: embedded ? "100%" : isMobile ? "calc(100dvh - 16px)" : "78vh",
+          maxHeight: embedded ? "100%" : "calc(100dvh - 16px)",
           background: "var(--bg)",
           border: "1px solid var(--border)",
           borderRadius: 10,

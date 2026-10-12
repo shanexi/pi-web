@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   applySessionUiStateRequest,
@@ -101,7 +103,7 @@ export function useSessionUiState(): SessionUiStateApi {
     const loadId = ++loadIdRef.current;
     refreshInFlightRef.current = loadId;
     try {
-      const response = await fetch(SESSION_UI_STATE_URL, { cache: "no-store" });
+      const response = await apiFetch(SESSION_UI_STATE_URL, { cache: "no-store" });
       const next = await readState(response);
       if (loadId !== loadIdRef.current) return;
       serverStateRef.current = next;
@@ -137,7 +139,7 @@ export function useSessionUiState(): SessionUiStateApi {
     const run = async (): Promise<boolean> => {
       let ok = false;
       try {
-        const response = await fetch(SESSION_UI_STATE_URL, {
+        const response = await apiFetch(SESSION_UI_STATE_URL, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(request),

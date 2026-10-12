@@ -1,5 +1,8 @@
 "use client";
 
+import { LOCAL_PANELS } from "@/lib/feature-flags";
+import { apiFetch, apiUrl } from "@/lib/api-base";
+
 import { forwardRef, useState, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import { getFileIcon, FolderIcon } from "./FileIcons";
 import { DismissButton } from "./DismissButton";
@@ -97,7 +100,7 @@ async function responseError(res: Response, fallback: string): Promise<Error> {
 
 async function fetchEntries(dirPath: string, showHidden = false): Promise<FileNode[]> {
   const encoded = encodeFilePathForApi(dirPath);
-  const res = await fetch(`/api/files/${encoded}?type=list${showHidden ? "&hidden=1" : ""}`);
+  const res = await apiFetch(`/api/files/${encoded}?type=list${showHidden ? "&hidden=1" : ""}`);
   if (!res.ok) throw await responseError(res, "Failed to load files");
   const data = await res.json() as { entries?: FileEntry[] };
   return (data.entries ?? []).map((e) => ({
@@ -116,7 +119,7 @@ async function fetchEntries(dirPath: string, showHidden = false): Promise<FileNo
 // Sends the target the operator was shown, so a link pointed elsewhere since
 // the listing is refused instead of granting a directory nobody looked at.
 async function allowOutsideLink(linkPath: string, target: string): Promise<void> {
-  const res = await fetch(`/api/files/${encodeFilePathForApi(linkPath)}?type=allow-link`, {
+  const res = await apiFetch(`/api/files/${encodeFilePathForApi(linkPath)}?type=allow-link`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ target }),
@@ -126,7 +129,7 @@ async function allowOutsideLink(linkPath: string, target: string): Promise<void>
 
 async function fetchGitStatus(cwd: string): Promise<GitStatusResponse> {
   const params = new URLSearchParams({ cwd });
-  const res = await fetch(`/api/git/status?${params.toString()}`);
+  const res = await apiFetch(`/api/git/status?${params.toString()}`);
   if (!res.ok) throw new Error(`Failed to load Git status (HTTP ${res.status})`);
   return res.json() as Promise<GitStatusResponse>;
 }
@@ -457,7 +460,7 @@ export function TreeNode({
         )}
         {hovered && !node.isDir && (
           <a
-            href={`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`}
+            href={apiUrl(`/api/files/${encodeFilePathForApi(node.fullPath)}?type=download`)}
             download
             onClick={(e) => e.stopPropagation()}
             title={t("files.download")}
@@ -748,7 +751,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setSearchLoading(true);
     setSearchError(false);
     const timer = setTimeout(() => {
-      fetch(`/api/file-index?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}`, { signal: controller.signal })
+      apiFetch(`/api/file-index?cwd=${encodeURIComponent(cwd)}&q=${encodeURIComponent(query)}`, { signal: controller.signal })
         .then((response) => response.ok ? response.json() as Promise<{ matches?: FileIndexEntry[] }> : Promise.reject(new Error("Search failed")))
         .then((data) => setSearchPaths((data.matches ?? []).filter((entry) => !entry.isDir).map((entry) => entry.path)))
         .catch(() => {
@@ -883,7 +886,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
     setUploadPhase("checking");
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/files/${encodeFilePathForApi(cwd)}?type=upload-check`,
         {
           method: "POST",
@@ -977,6 +980,7 @@ export const FileExplorer = forwardRef<FileExplorerHandle, Props>(function FileE
   }, []);
 
   useEffect(() => {
+    if (!LOCAL_PANELS) return;
     let cancelled = false;
     fetchGitStatus(cwd)
       .then((status) => {

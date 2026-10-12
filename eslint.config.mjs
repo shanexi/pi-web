@@ -3,7 +3,7 @@ import typescript from "eslint-config-next/typescript";
 
 const eslintConfig = [
   // demo/ is a separate Next.js project with its own lint config.
-  { ignores: ["demo/**"] },
+  { ignores: ["demo/**", ".open-next/**", ".wrangler/**", "cloudflare-env.d.ts"] },
   ...coreWebVitals,
   ...typescript,
   {

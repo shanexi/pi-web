@@ -20,6 +20,7 @@ const BASE = RAW_BASE.trim().replace(/\/+$/, "");
  * With no base configured the path is returned unchanged (same-origin).
  */
 export function apiUrl(path: string): string {
+  if (/^https?:\/\//.test(path)) return path;
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   if (!BASE) return normalizedPath;
   return `${BASE}${normalizedPath}`;
@@ -50,11 +51,16 @@ let redirectingToLogin = false;
  *
  * Always use this instead of `fetch(apiUrl(...))`.
  */
-export async function apiFetch(path: string, init?: RequestInit): Promise<Response> {
-  const res = await fetch(apiUrl(path), { ...init, credentials: "include" });
+export async function apiFetch(path: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const res = await fetch(typeof path === "string" ? apiUrl(path) : path, { ...init, credentials: "include" });
   if (res.status === 401 && typeof window !== "undefined" && !redirectingToLogin) {
     redirectingToLogin = true;
     window.location.href = loginUrl(window.location.href);
   }
   return res;
+}
+
+/** Authenticated server-sent events from the agent Worker. */
+export function apiEvents(path: string | URL): EventSource {
+  return new EventSource(apiUrl(String(path)), { withCredentials: true });
 }

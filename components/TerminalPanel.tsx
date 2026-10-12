@@ -1,5 +1,7 @@
 "use client";
 
+import { apiEvents } from "@/lib/api-base";
+
 import { useCallback, useEffect, useRef, useState } from "react";
 import { FitAddon } from "@xterm/addon-fit";
 import { Terminal } from "@xterm/xterm";
@@ -148,7 +150,7 @@ export function TerminalPanel({ tab, active, onRestart, onClosed, onCloseError }
     const connect = () => {
       if (disposed || exited || !navigator.onLine) return;
       events?.close();
-      events = new EventSource(`/api/terminal/${encodeURIComponent(id)}/events${offset === undefined ? "" : `?after=${offset}`}`);
+      events = apiEvents(`/api/terminal/${encodeURIComponent(id)}/events${offset === undefined ? "" : `?after=${offset}`}`);
       events.onmessage = (message) => {
         const event = JSON.parse(message.data) as TerminalEvent;
         if (event.type === "output") {

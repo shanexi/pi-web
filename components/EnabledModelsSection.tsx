@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { useCallback, useEffect, useId, useRef, useState } from "react";
 import { useI18n } from "@/hooks/useI18n";
 import type { EnabledModelsView } from "@/lib/enabled-models";
@@ -88,7 +90,7 @@ export function useEnabledModels(cwd?: string | null): EnabledModelsController {
     const controller = new AbortController();
     setLoading(true);
     const query = cwd ? `?cwd=${encodeURIComponent(cwd)}` : "";
-    fetch(`/api/models/enabled${query}`, { signal: controller.signal })
+    apiFetch(`/api/models/enabled${query}`, { signal: controller.signal })
       .then(async (res) => {
         const data = await res.json() as EnabledModelsView & { error?: string };
         if (!res.ok || data.error) throw new Error(data.error ?? `HTTP ${res.status}`);
@@ -117,7 +119,7 @@ export function useEnabledModels(cwd?: string | null): EnabledModelsController {
     setFailure(null);
     void (async () => {
       try {
-        const res = await fetch("/api/models/enabled", {
+        const res = await apiFetch("/api/models/enabled", {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ ...body, ...(cwd ? { cwd } : {}) }),
@@ -334,7 +336,7 @@ function useCatalogRefresh(providerId: string, onChanged: () => void) {
     setNote(null);
     void (async () => {
       try {
-        const res = await fetch("/api/models/refresh", {
+        const res = await apiFetch("/api/models/refresh", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ provider: providerId }),

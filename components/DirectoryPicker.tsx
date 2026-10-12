@@ -1,7 +1,11 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { type CSSProperties, type FormEvent, useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
+import { SandboxDirPicker } from "./SandboxDirPicker";
+import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { useI18n } from "@/hooks/useI18n";
 
 interface DirectoryEntry {
@@ -66,14 +70,14 @@ const secondaryActionStyle: CSSProperties = {
 
 async function loadDirectories(directory?: string): Promise<BrowseResponse> {
   const query = directory ? `?path=${encodeURIComponent(directory)}` : "";
-  const response = await fetch(`/api/cwd/browse${query}`);
+  const response = await apiFetch(`/api/cwd/browse${query}`);
   const data = await response.json() as BrowseResponse;
   if (!response.ok || data.error) throw new Error(data.error ?? `HTTP ${response.status}`);
   return data;
 }
 
 async function createDirectory(parentPath: string, name: string): Promise<string> {
-  const response = await fetch("/api/cwd/browse", {
+  const response = await apiFetch("/api/cwd/browse", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ path: parentPath, name }),
@@ -150,7 +154,7 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
 
   useEffect(() => {
     setPortalTarget(document.body);
-    void navigateTo(initialPath || undefined);
+    if (LOCAL_PANELS) void navigateTo(initialPath || undefined);
   }, [initialPath, navigateTo]);
 
   const handlePathSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -192,6 +196,15 @@ export function DirectoryPicker({ onCancel, onSelect, initialPath, busy = false,
   const canNavigateUp = Boolean(parentDirectory) || isWindowsDriveRoot(currentPath);
 
   if (!portalTarget) return null;
+  if (!LOCAL_PANELS) return createPortal(
+    <div role="dialog" aria-modal="true" aria-label={t("sidebar.openFolder")} className="settings-dialog-backdrop" onClick={(event) => { if (event.target === event.currentTarget) onCancel(); }}>
+      <div style={{ ...panelSurfaceStyle, width: 600, maxWidth: "calc(100vw - 24px)", padding: 16 }}>
+        <button type="button" onClick={onCancel} aria-label={t("i18n.close")} className="config-close-button">×</button>
+        {error && <p role="alert">{error}</p>}
+        <SandboxDirPicker initialPath={initialPath} onSelect={onSelect} />
+      </div>
+    </div>, portalTarget,
+  );
 
   return createPortal(
     <div

@@ -1,3 +1,5 @@
+
+import { apiFetch } from "@/lib/api-base";
 import type {
   CodemodeInlineBudgetSetting,
   CodemodeMode,
@@ -873,7 +875,7 @@ async function loadWithin(cwd: string | null, fetchImpl: FetchLike, signal: Abor
  */
 export async function loadMcpOverview(
   cwd: string | null,
-  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  fetchImpl: FetchLike = (input, init) => apiFetch(input, init),
   signal?: AbortSignal,
   timeoutMs: number = MCP_OVERVIEW_TIMEOUT_MS,
 ): Promise<McpLoadResult> {
@@ -978,7 +980,7 @@ async function requestCodemodeSave(
  */
 export async function saveMcpCodemodePreference(
   preference: McpCodemodePreference,
-  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  fetchImpl: FetchLike = (input, init) => apiFetch(input, init),
   signal?: AbortSignal,
   timeoutMs: number = MCP_CODEMODE_SAVE_TIMEOUT_MS,
 ): Promise<McpCodemodeSaveResult> {
@@ -997,7 +999,7 @@ export async function saveMcpCodemodePreference(
  */
 export async function saveMcpCodemodeMode(
   mode: CodemodeMode,
-  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  fetchImpl: FetchLike = (input, init) => apiFetch(input, init),
   signal?: AbortSignal,
   timeoutMs: number = MCP_CODEMODE_SAVE_TIMEOUT_MS,
 ): Promise<McpCodemodeModeSaveResult> {
@@ -1025,7 +1027,7 @@ export async function saveMcpCodemodeMode(
  */
 export async function saveMcpCodemodeInlineBudget(
   budget: number | null,
-  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  fetchImpl: FetchLike = (input, init) => apiFetch(input, init),
   signal?: AbortSignal,
   timeoutMs: number = MCP_CODEMODE_SAVE_TIMEOUT_MS,
 ): Promise<McpCodemodeInlineBudgetSaveResult> {
@@ -1227,7 +1229,7 @@ async function requestMcpAction(body: Record<string, unknown>, fetchImpl: FetchL
 export async function postMcpAction(
   request: McpActionRequest,
   cwd: string | null,
-  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  fetchImpl: FetchLike = (input, init) => apiFetch(input, init),
   signal?: AbortSignal,
   timeoutMs: number = MCP_ACTION_TIMEOUT_MS,
 ): Promise<McpActionResult> {
@@ -1500,7 +1502,7 @@ async function requestMcpTest(body: Record<string, unknown>, fetchImpl: FetchLik
 export async function postMcpTest(
   server: McpServerRef,
   cwd: string | null,
-  fetchImpl: FetchLike = (input, init) => fetch(input, init),
+  fetchImpl: FetchLike = (input, init) => apiFetch(input, init),
   signal?: AbortSignal,
   timeoutMs: number = MCP_TEST_TIMEOUT_MS,
 ): Promise<McpTestRequestResult> {

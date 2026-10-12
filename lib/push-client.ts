@@ -1,3 +1,6 @@
+import { LOCAL_PANELS } from "./feature-flags";
+
+import { apiFetch } from "@/lib/api-base";
 /**
  * Client-side Web Push subscription. Called once when the Notification
  * permission is granted; silently no-ops on unsupported browsers (e.g. iOS
@@ -27,12 +30,13 @@ export function isPushSupported(): boolean {
 }
 
 export async function setupPushSubscription(locale: string): Promise<boolean> {
+  if (!LOCAL_PANELS) return false;
   if (!isPushSupported() || Notification.permission !== "granted") return false;
   if (activeSubscriptionPromise) return activeSubscriptionPromise;
 
   const attempt = (async () => {
     try {
-      const configResponse = await fetch("/api/push/config");
+      const configResponse = await apiFetch("/api/push/config");
       if (!configResponse.ok) return false;
       const { publicKey } = await configResponse.json() as { publicKey?: string };
       if (!publicKey) return false;
@@ -46,7 +50,7 @@ export async function setupPushSubscription(locale: string): Promise<boolean> {
         });
       }
 
-      const response = await fetch("/api/push/subscribe", {
+      const response = await apiFetch("/api/push/subscribe", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ subscription: subscription.toJSON(), locale }),

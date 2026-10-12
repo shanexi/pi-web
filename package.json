@@ -35,7 +35,6 @@
     "package.json"
   ],
   "scripts": {
-    "postinstall": "node bin/prepare-terminal.js",
     "dev": "next dev -H 127.0.0.1 -p 30141",
     "dev:lan": "next dev -H 0.0.0.0 -p 30141",
     "build": "next build --webpack",
@@ -44,11 +43,12 @@
     "lint": "eslint .",
     "test:terminal": "node e2e/terminal.mjs",
     "test:e2e": "node e2e/run.mjs",
-    "test": "node --experimental-strip-types --test \"app/**/*.test.mjs\" \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
+    "test": "node --experimental-strip-types --test \"components/**/*.test.mjs\" \"hooks/**/*.test.mjs\" \"lib/**/*.test.mjs\" \"public/**/*.test.mjs\"",
     "release": "npm version patch --no-git-tag-version && npm run build && npm publish --access public",
     "cf-build": "opennextjs-cloudflare build",
     "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "deploy:cf": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts --include-runtime=false"
   },
   "dependencies": {
     "@earendil-works/pi-agent-core": "1.1.0",
@@ -59,25 +59,19 @@
     "@xterm/xterm": "6.0.0",
     "js-yaml": "^5.2.3",
     "next": "16.3.8",
-    "node-pty": "1.2.0-beta.15",
-    "proper-lockfile": "4.1.2",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
-    "semver": "7.8.5",
-    "undici": "8.11.0",
-    "web-push": "^3.6.7"
+    "semver": "7.8.5"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.2",
     "@types/js-yaml": "^4.0.9",
     "@types/mdast": "^4.0.4",
     "@types/node": "^25",
-    "@types/proper-lockfile": "4.1.4",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "@types/react-syntax-highlighter": "^15.5.13",
     "@types/semver": "7.8.0",
-    "@types/web-push": "^3.6.4",
     "ansi_up": "^6.0.6",
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
@@ -98,7 +92,7 @@
     "remark-math": "^6.0.0",
     "tailwindcss": "^4.2.2",
     "typescript": "^5",
-    "@opennextjs/cloudflare": "^1.20.1",
-    "wrangler": "^4.107.1"
+    "@opennextjs/cloudflare": "1.20.10",
+    "wrangler": "4.149.0"
   }
 }

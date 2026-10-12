@@ -1,5 +1,7 @@
 "use client";
 
+import { apiFetch } from "@/lib/api-base";
+
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { MessageView } from "./MessageView";
 import { StatusIcon, statusColor } from "./AgentSessionPanel";
@@ -62,7 +64,7 @@ export function SubagentViewer({ sessionId, fallbackLabel, running, onOpenFile }
     const controller = new AbortController();
     (async () => {
       try {
-        const res = await fetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
+        const res = await apiFetch(`/api/sessions/${encodeURIComponent(sessionId)}`, {
           signal: controller.signal,
           cache: "no-store",
         });
@@ -90,7 +92,7 @@ export function SubagentViewer({ sessionId, fallbackLabel, running, onOpenFile }
       if (inFlight) return;
       inFlight = true;
       try {
-        const res = await fetch(contextUrl(sessionId), { signal: controller.signal, cache: "no-store" });
+        const res = await apiFetch(contextUrl(sessionId), { signal: controller.signal, cache: "no-store" });
         if (res.status === 404) {
           if (!cancelled) setNotFound(true);
           return;
@@ -143,7 +145,7 @@ export function SubagentViewer({ sessionId, fallbackLabel, running, onOpenFile }
     pagingControllerRef.current = controller;
     setLoadingEarlier(true);
     try {
-      const res = await fetch(contextUrl(sessionId, cursor), { signal: controller.signal, cache: "no-store" });
+      const res = await apiFetch(contextUrl(sessionId, cursor), { signal: controller.signal, cache: "no-store" });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json() as { context: Partial<SubagentTranscript> };
       // A poll replaced the transcript meanwhile: this page no longer joins on.

@@ -1,5 +1,8 @@
 "use client";
 
+import { LOCAL_PANELS } from "@/lib/feature-flags";
+import { apiFetch, CF_CWD } from "@/lib/api-base";
+
 import { useEffect, useImperativeHandle, useLayoutEffect, useState, useCallback, useMemo, useRef, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type MouseEvent as ReactMouseEvent, type ReactNode, type Ref, type RefObject, type UIEvent as ReactUIEvent } from "react";
 import type { SessionInfo } from "@/lib/types";
 import { listSessionFamilies, type SessionFamily } from "@/lib/session-family";
@@ -489,7 +492,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // project order is first saved from the full details.
   const [sessionDetailsLoaded, setSessionDetailsLoaded] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [selectedCwd, setSelectedCwd] = useState<string | null>(null);
+  const [selectedCwd, setSelectedCwd] = useState<string | null>(CF_CWD);
   const [homeDir, setHomeDir] = useState<string>("");
   // Open for the files tab's project list, or for the composer's bar ("new-session").
   const [customPathOpen, setCustomPathOpen] = useState<false | "files" | "new-session">(false);
@@ -715,7 +718,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     const loadId = ++sessionLoadIdRef.current;
     try {
       if (showLoading) setLoading(true);
-      const res = await fetch(sessionListUrl(summary, force), {
+      const res = await apiFetch(sessionListUrl(summary, force), {
         cache: "no-store",
       });
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -798,7 +801,8 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // label (Explorer / Finder / generic) and disable itself when unavailable.
   useEffect(() => {
     let cancelled = false;
-    fetch("/api/open-in-explorer")
+    if (!LOCAL_PANELS) return;
+    apiFetch("/api/open-in-explorer")
       .then((res) => res.ok ? res.json() as Promise<FileManagerAvailability> : null)
       .then((data) => { if (!cancelled && data) setFileManager(data); })
       .catch(() => {});
@@ -815,7 +819,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     const dir = selectedCwd ?? selectedCwdProp;
     if (!dir) return false;
     try {
-      const res = await fetch("/api/open-in-explorer", {
+      const res = await apiFetch("/api/open-in-explorer", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: dir }),
@@ -872,7 +876,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
       controller?.abort();
       controller = current;
       try {
-        const res = await fetch("/api/agent/running", {
+        const res = await apiFetch("/api/agent/running", {
           cache: "no-store",
           signal: current.signal,
         });
@@ -990,7 +994,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, [explorerRefreshKey]);
 
   useEffect(() => {
-    fetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
+    apiFetch("/api/home").then((r) => r.json()).then((d: { home?: string }) => {
       if (d.home) setHomeDir(d.home);
     }).catch(() => {});
   }, []);
@@ -1075,7 +1079,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     }
     let cancelled = false;
     setWorktreeLoadingCwd(selectedCwd);
-    fetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
+    apiFetch(`/api/worktrees?cwd=${encodeURIComponent(selectedCwd)}`)
       .then((r) => r.json())
       .then((d: { projectRoot?: string; projectKey?: string; isGit?: boolean; isTopLevel?: boolean; currentWorktreePath?: string | null; worktrees?: WorktreeEntry[]; error?: string }) => {
         if (cancelled) return;
@@ -1149,7 +1153,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setCustomPathValidating(true);
     setCustomPathError(null);
     try {
-      const res = await fetch("/api/cwd/validate", {
+      const res = await apiFetch("/api/cwd/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: path }),
@@ -1200,7 +1204,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   }, []);
   const handleDefaultCwd = useCallback(async (purpose: "files" | "new-session" = "files") => {
     try {
-      const res = await fetch("/api/default-cwd", { method: "POST" });
+      const res = await apiFetch("/api/default-cwd", { method: "POST" });
       const data = await res.json() as { cwd?: string; error?: string };
       // Select it like any other directory, so validation, project identity and
       // the file allow-list all go through /api/cwd/validate. It is not a path
@@ -1219,7 +1223,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // listed even when nobody moves there. The picker moves there itself.
   const createWorktree = useCallback(async (project: ProjectChoice, branch: string): Promise<{ path: string } | { error: string }> => {
     try {
-      const res = await fetch("/api/worktrees", {
+      const res = await apiFetch("/api/worktrees", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: project.root, branch }),
@@ -1241,7 +1245,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
   // and the picker asks before retrying with force.
   const handleRemoveWorktree = useCallback(async (project: ProjectChoice, path: string, force: boolean): Promise<WorktreeRemoval> => {
     try {
-      const res = await fetch("/api/worktrees", {
+      const res = await apiFetch("/api/worktrees", {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: project.root, path, force }),
@@ -1775,7 +1779,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     // skill-invoked session stays a no-op instead of persisting raw XML.)
     if (renameValue === title || name === (session.name ?? "")) return;
     try {
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
+      await apiFetch(`/api/sessions/${encodeURIComponent(session.id)}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name }),
@@ -1810,7 +1814,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     setConfirmDeleteRootId((current) => (current === session.id ? null : current));
     try {
       // The server deletes the family's subagent sessions with it.
-      await fetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
+      await apiFetch(`/api/sessions/${encodeURIComponent(session.id)}`, { method: "DELETE" });
       onSessionDeleted?.(session.id);
       void loadSessions();
     } catch {
@@ -1880,7 +1884,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     forkingIdsRef.current.add(source.id);
     const selectedAtClick = selectedSessionIdRef.current;
     try {
-      const res = await fetch(`/api/sessions/${encodeURIComponent(source.id)}/fork`, {
+      const res = await apiFetch(`/api/sessions/${encodeURIComponent(source.id)}/fork`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: "{}",

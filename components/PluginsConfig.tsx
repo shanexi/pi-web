@@ -1259,10 +1259,13 @@ const EMPTY_TOTALS = { extensions: 0, skills: 0, prompts: 0, themes: 0 };
 
 /** E8f master-detail panel (THIRDPARTY_EXTENSIONS=true). */
 function PluginsConfigMasterDetail({
+  embedded = false,
   sessionId,
   onClose,
   onReloaded,
 }: {
+  embedded?: boolean;
+  cwd?: string;
   sessionId: string | null;
   onClose: () => void;
   onReloaded?: () => void;
@@ -1694,11 +1697,12 @@ function PluginsConfigMasterDetail({
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.35)",
+        position: embedded ? "relative" : "fixed",
+        inset: embedded ? undefined : 0,
+        zIndex: embedded ? undefined : 1000,
+        background: embedded ? "none" : "rgba(0,0,0,0.35)",
         display: "flex",
+        height: embedded ? "100%" : undefined,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -1708,10 +1712,10 @@ function PluginsConfigMasterDetail({
     >
       <div
         style={{
-          width: isMobile ? "calc(100vw - 16px)" : 860,
-          maxWidth: "calc(100vw - 16px)",
-          height: isMobile ? "calc(100dvh - 16px)" : "76vh",
-          maxHeight: "calc(100dvh - 16px)",
+          width: embedded ? "100%" : isMobile ? "calc(100vw - 16px)" : 860,
+          maxWidth: embedded ? "100%" : "calc(100vw - 16px)",
+          height: embedded ? "100%" : isMobile ? "calc(100dvh - 16px)" : "78vh",
+          maxHeight: embedded ? "100%" : "calc(100dvh - 16px)",
           background: "var(--bg)",
           border: "1px solid var(--border)",
           borderRadius: 8,
@@ -1987,10 +1991,13 @@ function PluginsConfigMasterDetail({
  * panel — flat list, no groups, no install.
  */
 function PluginsConfigLegacy({
+  embedded = false,
   sessionId,
   onClose,
   onReloaded,
 }: {
+  embedded?: boolean;
+  cwd?: string;
   sessionId: string | null;
   onClose: () => void;
   onReloaded?: () => void;
@@ -2071,11 +2078,12 @@ function PluginsConfigLegacy({
   return (
     <div
       style={{
-        position: "fixed",
-        inset: 0,
-        zIndex: 1000,
-        background: "rgba(0,0,0,0.35)",
+        position: embedded ? "relative" : "fixed",
+        inset: embedded ? undefined : 0,
+        zIndex: embedded ? undefined : 1000,
+        background: embedded ? "none" : "rgba(0,0,0,0.35)",
         display: "flex",
+        height: embedded ? "100%" : undefined,
         alignItems: "center",
         justifyContent: "center",
       }}
@@ -2085,10 +2093,10 @@ function PluginsConfigLegacy({
     >
       <div
         style={{
-          width: isMobile ? "calc(100vw - 16px)" : 640,
-          maxWidth: "calc(100vw - 16px)",
-          height: isMobile ? "calc(100dvh - 16px)" : "70vh",
-          maxHeight: "calc(100dvh - 16px)",
+          width: embedded ? "100%" : isMobile ? "calc(100vw - 16px)" : 640,
+          maxWidth: embedded ? "100%" : "calc(100vw - 16px)",
+          height: embedded ? "100%" : isMobile ? "calc(100dvh - 16px)" : "78vh",
+          maxHeight: embedded ? "100%" : "calc(100dvh - 16px)",
           background: "var(--bg)",
           border: "1px solid var(--border)",
           borderRadius: 10,
@@ -2264,6 +2272,8 @@ function PluginsConfigLegacy({
 }
 
 export function PluginsConfig(props: {
+  embedded?: boolean;
+  cwd?: string;
   sessionId: string | null;
   onClose: () => void;
   onReloaded?: () => void;

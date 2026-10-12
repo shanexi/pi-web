@@ -1,4 +1,7 @@
 "use client";
+
+import { LOCAL_PANELS } from "@/lib/feature-flags";
+import { apiFetch } from "@/lib/api-base";
 import { registerAbortHandler } from "@/hooks/useKeyboardShortcuts";
 import Image from "next/image";
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type ReactNode } from "react";
@@ -100,7 +103,8 @@ let appUpdateCheck: Promise<AppUpdateResponse | null> | null = null;
 let appUpdateFound: AppUpdateResponse | null = null;
 
 function checkAppUpdate(): Promise<AppUpdateResponse | null> {
-  appUpdateCheck ??= fetch("/api/app-update")
+  if (!LOCAL_PANELS) return Promise.resolve(null);
+  appUpdateCheck ??= apiFetch("/api/app-update")
     .then(async (response) => {
       if (!response.ok) return null;
       const result = await response.json() as AppUpdateResponse;
