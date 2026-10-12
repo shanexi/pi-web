@@ -112,7 +112,7 @@ test("New restores the draft after session navigation and workspace auto-restore
         URLSearchParams,
         window: { location: { pathname: "/", search: "" } },
         router: { replace() {} },
-        fetch: () => response.promise,
+        apiFetch: () => response.promise,
         getLastOpenSession: (key) => key === cwd ? session.id : null,
         clearLastOpen() {},
         workspaceKeyOf: (value) => value.projectKey ?? value.cwd,

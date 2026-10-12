@@ -618,6 +618,7 @@ export function AppShell() {
   // New session is a selection too: remember the composer cwd so reload stays
   // on that UI instead of resurrecting the previous chat.
   useEffect(() => {
+    if (!initialSessionRestored) return;
     if (selectedSession) {
       const projectKey = selectedSession.projectKey
         ?? activeProjectKeyRef.current
@@ -627,7 +628,7 @@ export function AppShell() {
       return;
     }
     if (newSessionCwd) setTabOpenNewSession(newSessionCwd);
-  }, [newSessionCwd, selectedSession]);
+  }, [initialSessionRestored, newSessionCwd, selectedSession]);
 
   useEffect(() => {
     const requestedCwd = initialNavigation.requestedCwd;
