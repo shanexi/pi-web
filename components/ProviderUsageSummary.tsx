@@ -1,5 +1,6 @@
 "use client";
 
+import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { apiFetch } from "@/lib/api-base";
 
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -28,7 +29,7 @@ type UsageResponse = { providerId: string; status: "ready" | "auth-unavailable" 
 const STORAGE_PREFIX = "pi-web:provider-usage:";
 
 export function ProviderUsageSummary({ providerId, enabled }: { providerId: string; enabled: boolean }) {
-  if (!isProviderUsageId(providerId)) return null;
+  if (!LOCAL_PANELS || !isProviderUsageId(providerId)) return null;
   return <ProviderUsageContent providerId={providerId} enabled={enabled} />;
 }
 

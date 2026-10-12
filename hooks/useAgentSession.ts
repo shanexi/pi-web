@@ -1573,12 +1573,16 @@ export function useAgentSession(opts: UseAgentSessionOptions) {
         break;
       }
       case "message_end": {
-        // Same late-event guard: after reconcile finished this run,
-        // loadSession already loaded this message from the session file —
-        // appending it again would duplicate it.
-        if (!agentRunningRef.current) break;
-        if (isSystemMessageEvent(event)) break;
         const completed = event.message as AgentMessage | undefined;
+        // Background subagent notifications may arrive after the foreground
+        // prompt ends. Reconcile their persisted custom messages without
+        // restarting the completed prompt's streaming UI.
+        if (!agentRunningRef.current && completed?.role === "custom") {
+          const sid = sessionIdRef.current;
+          if (sid) void loadSession(sid);
+          break;
+        }
+        if (!agentRunningRef.current || isSystemMessageEvent(event)) break;
         if (completed && completed.role === "user") {
           // Delivered steering/follow-up messages surface here as user
           // messages. The run's initial prompt also emits one, but handleSend

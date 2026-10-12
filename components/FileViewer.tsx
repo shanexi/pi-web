@@ -18,6 +18,7 @@ import {
   isImagePath,
   isVideoPath,
 } from "@/lib/file-types";
+import { LOCAL_PANELS } from "@/lib/feature-flags";
 import { apiUrl, apiFetch, apiEvents } from "@/lib/api-base";
 import { encodeFilePathForApi, getFileDirectory, getFileName, getRelativeFilePath } from "@/lib/file-paths";
 import { parsePdfPageFragment, resolveLocalFileHref, shouldOpenLocalFileInApp } from "@/lib/file-links";
@@ -1258,7 +1259,7 @@ function TextFileViewer({
   const fetchGitDiff = useCallback(async (targetPath: string) => {
     const requestId = ++gitDiffRequestRef.current;
     setGitDiffLoading(true);
-    if (!cwd) {
+    if (!LOCAL_PANELS || !cwd) {
       setGitDiff(null);
       setGitDiffLoading(false);
       setGitDiffResolved(true);

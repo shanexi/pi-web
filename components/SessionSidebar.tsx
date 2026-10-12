@@ -2032,7 +2032,7 @@ export function SessionSidebar({ selectedSessionId, onSelectSession, onNewSessio
     deletingProjectsRef.current.add(project.key);
     showToast(t("sidebar.deletingSessions"));
     try {
-      const outcome = await deleteProjectSessions(ids, fetch);
+      const outcome = await deleteProjectSessions(ids, apiFetch);
       for (const id of outcome.deleted) onSessionDeleted?.(id);
       // The group goes with its last session unless it is current or pinned:
       // focus that fell to the page with it goes to the tab.
